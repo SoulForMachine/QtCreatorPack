@@ -1,0 +1,15 @@
+﻿<UserControl x:Class="QtCreatorPack.LocatorWindowControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             Background="{DynamicResource VsBrush.Window}"
+             Foreground="{DynamicResource VsBrush.WindowText}"
+             mc:Ignorable="d"
+             x:Name="LocatorToolWindow" Width="495.168" Unloaded="LocatorToolWindow_Unloaded">
+    <Grid>
+        <StackPanel Orientation="Vertical" Margin="5">
+            <ComboBox x:Name="comboBox" IsEditable="True" Height="30" TextInput="comboBox_TextInput" KeyDown="comboBox_KeyDown"/>
+        </StackPanel>
+    </Grid>
+</UserControl>
