@@ -6,7 +6,7 @@
              Background="{DynamicResource VsBrush.Window}"
              Foreground="{DynamicResource VsBrush.WindowText}"
              mc:Ignorable="d"
-             x:Name="LocatorToolWindow" Width="495.168" Unloaded="LocatorToolWindow_Unloaded">
+             x:Name="LocatorToolWindow" Width="495.168">
     <Grid>
         <StackPanel Orientation="Vertical" Margin="5">
             <ComboBox x:Name="comboBox" IsEditable="True" Height="30" TextInput="comboBox_TextInput" KeyDown="comboBox_KeyDown"/>

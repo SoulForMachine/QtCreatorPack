@@ -41,9 +41,9 @@ namespace QtCreatorPack
             Content = locatorWindowControl;
         }
 
-        public void SetSolution(IVsSolution solution)
+        internal void SetLocator(Locator locator)
         {
-            locatorWindowControl.SetSolution(solution);
+            locatorWindowControl.SetLocator(locator);
         }
     }
 }

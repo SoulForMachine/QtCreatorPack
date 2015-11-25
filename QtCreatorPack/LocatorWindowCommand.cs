@@ -9,6 +9,7 @@ using System.ComponentModel.Design;
 using System.Globalization;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio;
 
 namespace QtCreatorPack
 {
@@ -32,6 +33,11 @@ namespace QtCreatorPack
         /// </summary>
         private readonly Package package;
 
+        private IVsSolution _solution;
+        private LocatorWindow _locatorWindow;
+        private uint _cookie;
+        private Locator _locator;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="LocatorWindowCommand"/> class.
         /// Adds our command handlers for menu (commands must exist in the command table file)
@@ -54,9 +60,19 @@ namespace QtCreatorPack
                 commandService.AddCommand(menuItem);
             }
 
-            IVsSolution solution = ServiceProvider.GetService(typeof(SVsSolution)) as IVsSolution;
-            LocatorWindow locatorWindow = package.FindToolWindow(typeof(LocatorWindow), 0, true) as LocatorWindow;
-            locatorWindow.SetSolution(solution);
+            // Get the instance number 0 of this tool window. This window is single instance so this instance
+            // is actually the only one.
+            // The last flag is set to true so that if the tool window does not exists it will be created.
+            _locatorWindow = package.FindToolWindow(typeof(LocatorWindow), 0, true) as LocatorWindow;
+            if ((null == _locatorWindow) || (null == _locatorWindow.Frame))
+            {
+                throw new NotSupportedException("Cannot create tool window");
+            }
+
+            _locator = new Locator();
+            _solution = ServiceProvider.GetService(typeof(SVsSolution)) as IVsSolution;
+            _solution.AdviseSolutionEvents(_locator, out _cookie);
+            _locatorWindow.SetLocator(_locator);
         }
 
         /// <summary>
@@ -95,17 +111,8 @@ namespace QtCreatorPack
         /// <param name="e">The event args.</param>
         private void ShowToolWindow(object sender, EventArgs e)
         {
-            // Get the instance number 0 of this tool window. This window is single instance so this instance
-            // is actually the only one.
-            // The last flag is set to true so that if the tool window does not exists it will be created.
-            ToolWindowPane window = this.package.FindToolWindow(typeof(LocatorWindow), 0, true);
-            if ((null == window) || (null == window.Frame))
-            {
-                throw new NotSupportedException("Cannot create tool window");
-            }
-
-            IVsWindowFrame windowFrame = (IVsWindowFrame)window.Frame;
-            Microsoft.VisualStudio.ErrorHandler.ThrowOnFailure(windowFrame.Show());
+            IVsWindowFrame windowFrame = (IVsWindowFrame)_locatorWindow.Frame;
+            ErrorHandler.ThrowOnFailure(windowFrame.Show());
         }
     }
 }
