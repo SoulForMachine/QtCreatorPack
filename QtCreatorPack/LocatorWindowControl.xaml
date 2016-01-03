@@ -3,13 +3,46 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:vsui="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.14.0"
              Background="{DynamicResource VsBrush.Window}"
              Foreground="{DynamicResource VsBrush.WindowText}"
              mc:Ignorable="d"
-             x:Name="LocatorToolWindow" Width="495.168">
+             d:DesignHeight="300" d:DesignWidth="600"
+             x:Name="LocatorToolWindow">
     <Grid>
-        <StackPanel Orientation="Vertical" Margin="5">
-            <ComboBox x:Name="comboBox" IsEditable="True" Height="30" TextInput="comboBox_TextInput" KeyDown="comboBox_KeyDown"/>
-        </StackPanel>
+        <TextBox x:Name="textBox" Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}" TextWrapping="Wrap" VerticalAlignment="Top" DockPanel.Dock="Top" TextChanged="textBox_TextChanged" TabIndex="0"/>
+        <ListView x:Name="listView" Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}" Margin="0,18,0,0" KeyDown="listView_KeyDown" MouseDoubleClick="listView_MouseDoubleClick" SelectionMode="Single">
+            <ListView.View>
+                <GridView>
+                    <!--<GridView.ColumnHeaderContainerStyle>
+                        <Style TargetType="{x:Type GridViewColumnHeader}">
+                            <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}" />
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowTextKey}}" />
+
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="GridViewColumnHeader">
+                                        <Grid>
+                                            <VisualStateManager.VisualStateGroups>
+                                                <VisualStateGroup x:Name="CommonStates">
+                                                    <VisualState x:Name="Normal">
+                                                        <Storyboard>
+                                                            
+                                                        </Storyboard>
+                                                    </VisualState>
+                                                    <VisualState x:Name="MouseOver"/>
+                                                </VisualStateGroup>
+                                            </VisualStateManager.VisualStateGroups>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GridView.ColumnHeaderContainerStyle>-->
+                    <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}"/>
+                    <GridViewColumn Header="Path" DisplayMemberBinding="{Binding Path}"/>
+                </GridView>
+            </ListView.View>
+        </ListView>
     </Grid>
 </UserControl>

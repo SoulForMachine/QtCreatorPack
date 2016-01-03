@@ -96,14 +96,6 @@ namespace QtCreatorPack
                 return msg;
             }
 
-            public Message Copy()
-            {
-                Message msg = new Message();
-                msg.Type = Type;
-                msg.Text = Text;
-                return msg;
-            }
-
             private Message() { }
         }
 
@@ -111,7 +103,9 @@ namespace QtCreatorPack
         {
             public IVsHierarchy Hierarchy { get; private set; }
             public string Name { get; private set; }
-            public List<ProjectItem> Items { get; set; }
+            public List<ProjectItem> Items { get; private set; }
+
+            private uint _cookie;
 
             public Project(IVsHierarchy hierarchy)
             {
@@ -124,38 +118,84 @@ namespace QtCreatorPack
                     Name = string.Empty;
                 Items = new List<ProjectItem>();
                 ProcessHierarchy(VSConstants.VSITEMID_ROOT, hierarchy);
+                //Items.Sort((ProjectItem item1, ProjectItem item2) => { return item1.Name.CompareTo(item2.Name); });
+                Hierarchy.AdviseHierarchyEvents(this, out _cookie);
+            }
+
+            public void StopListeningEvents()
+            {
+                Hierarchy.UnadviseHierarchyEvents(_cookie);
             }
 
             #region IVsHierarchyEvents
 
             public int OnItemAdded(uint itemidParent, uint itemidSiblingPrev, uint itemidAdded)
             {
-                throw new NotImplementedException();
+                object addedItemObject;
+                if (Hierarchy.GetProperty(itemidAdded, (int)__VSHPROPID.VSHPROPID_ExtObject, out addedItemObject) == VSConstants.S_OK)
+                {
+                    EnvDTE.ProjectItem projectItem = addedItemObject as EnvDTE.ProjectItem;
+                    if (projectItem != null)
+                    {
+                        if (projectItem.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile)
+                        {
+                            ProjectItem item = new ProjectItem();
+                            item.Name = projectItem.Name;
+                            item.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
+                            item.Item = projectItem;
+                            lock (Items)
+                            {
+                                Items.Add(item);
+                            }
+                        }
+                    }
+                }
+
+                return VSConstants.S_OK;
             }
 
             public int OnItemsAppended(uint itemidParent)
             {
-                throw new NotImplementedException();
+                return VSConstants.S_OK;
             }
 
             public int OnItemDeleted(uint itemid)
             {
-                throw new NotImplementedException();
+                object deletedItemObject;
+                if (Hierarchy.GetProperty(itemid, (int)__VSHPROPID.VSHPROPID_ExtObject, out deletedItemObject) == VSConstants.S_OK)
+                {
+                    EnvDTE.ProjectItem projectItem = deletedItemObject as EnvDTE.ProjectItem;
+                    if (projectItem != null)
+                    {
+                        if (projectItem.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile)
+                        {
+                            lock (Items)
+                            {
+                                Items.RemoveAll((ProjectItem listItem) =>
+                                {
+                                    return projectItem == listItem.Item;
+                                });
+                            }
+                        }
+                    }
+                }
+
+                return VSConstants.S_OK;
             }
 
             public int OnPropertyChanged(uint itemid, int propid, uint flags)
             {
-                throw new NotImplementedException();
+                return VSConstants.S_OK;
             }
 
             public int OnInvalidateItems(uint itemidParent)
             {
-                throw new NotImplementedException();
+                return VSConstants.S_OK;
             }
 
             public int OnInvalidateIcon(IntPtr hicon)
             {
-                throw new NotImplementedException();
+                return VSConstants.S_OK;
             }
 
             #endregion
@@ -210,7 +250,8 @@ namespace QtCreatorPack
         private List<Project> _projectList = new List<Project>();
         private System.Threading.Thread _workerThread;
         private readonly object _workerThreadSync = new object();
-        private Message _message = null;
+        private Message _searchMessage = null;  // This one is processed after the queue is empty.
+        private Queue<Message> _messageQueue = new Queue<Message>();
         private Dispatcher _dispatcher;
 
         public Locator()
@@ -219,19 +260,23 @@ namespace QtCreatorPack
             _workerThread = new System.Threading.Thread(WorkerThreadFunc);
         }
 
-        public void UpdateSearch(string text)
+        public void SearchString(string text)
         {
-            lock (_workerThreadSync)
+            if (_workerThread.IsAlive && _projectList.Count > 0)
             {
-                _message = Message.SearchString(text);
-                _interruptWork = true;
-                Monitor.Pulse(_workerThreadSync);
+                lock (_workerThreadSync)
+                {
+                    _searchMessage = Message.SearchString(text);
+                    _interruptWork = true;
+                    Monitor.Pulse(_workerThreadSync);
+                }
             }
         }
 
         public void StartWorkerThread()
         {
-            _workerThread.Start();
+            if (!_workerThread.IsAlive)
+                _workerThread.Start();
         }
 
         public void StopWorkerThread()
@@ -240,7 +285,7 @@ namespace QtCreatorPack
             {
                 lock (_workerThreadSync)
                 {
-                    _message = Message.Stop();
+                    _messageQueue.Enqueue(Message.Stop());
                     _interruptWork = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
@@ -263,13 +308,7 @@ namespace QtCreatorPack
 
         public int OnAfterLoadProject(IVsHierarchy pStubHierarchy, IVsHierarchy pRealHierarchy)
         {
-            lock (_workerThreadSync)
-            {
-                _message = Message.ProjectLoaded(pRealHierarchy);
-                _interruptWork = true;
-                Monitor.Pulse(_workerThreadSync);
-            }
-
+            ProjectLoaded(pRealHierarchy);
             return VSConstants.S_OK;
         }
 
@@ -285,6 +324,7 @@ namespace QtCreatorPack
 
         public int OnAfterOpenProject(IVsHierarchy pHierarchy, int fAdded)
         {
+            ProjectLoaded(pHierarchy);
             return VSConstants.S_OK;
         }
 
@@ -295,6 +335,7 @@ namespace QtCreatorPack
 
         public int OnBeforeCloseProject(IVsHierarchy pHierarchy, int fRemoved)
         {
+            ProjectUnloaded(pHierarchy);
             return VSConstants.S_OK;
         }
 
@@ -315,13 +356,7 @@ namespace QtCreatorPack
 
         public int OnBeforeUnloadProject(IVsHierarchy pRealHierarchy, IVsHierarchy pStubHierarchy)
         {
-            lock (_workerThreadSync)
-            {
-                _message = Message.ProjectUnloaded(pRealHierarchy);
-                _interruptWork = true;
-                Monitor.Pulse(_workerThreadSync);
-            }
-
+            ProjectUnloaded(pRealHierarchy);
             return VSConstants.S_OK;
         }
 
@@ -354,6 +389,34 @@ namespace QtCreatorPack
                 FunctionSearchFinishedEvent(this, new FunctionSearchFinishedEventArgs(itemList));
         }
 
+        private void ProjectLoaded(IVsHierarchy hierarchy)
+        {
+            if (_workerThread.IsAlive)
+            {
+                lock (_workerThreadSync)
+                {
+                    Message msg = Message.ProjectLoaded(hierarchy);
+                    _messageQueue.Enqueue(msg);
+                    _interruptWork = true;
+                    Monitor.Pulse(_workerThreadSync);
+                }
+            }
+        }
+
+        private void ProjectUnloaded(IVsHierarchy hierarchy)
+        {
+            if (_workerThread.IsAlive)
+            {
+                lock (_workerThreadSync)
+                {
+                    Message msg = Message.ProjectUnloaded(hierarchy);
+                    _messageQueue.Enqueue(msg);
+                    _interruptWork = true;
+                    Monitor.Pulse(_workerThreadSync);
+                }
+            }
+        }
+
         private void WorkerThreadFunc()
         {
             while (true)
@@ -362,10 +425,18 @@ namespace QtCreatorPack
                 lock (_workerThreadSync)
                 {
                     _interruptWork = false;
-                    while (_message == null)
+                    while (_searchMessage == null && _messageQueue.Count == 0)
                         Monitor.Wait(_workerThreadSync);
-                    message = _message;
-                    _message = null;
+
+                    if (_messageQueue.Count > 0)
+                    {
+                        message = _messageQueue.Dequeue();
+                    }
+                    else // search message must be set
+                    {
+                        message = _searchMessage;
+                        _searchMessage = null;
+                    }
                 }
 
                 if (message.Type == MessageType.SearchString)
@@ -377,18 +448,32 @@ namespace QtCreatorPack
                     {
                         // Search for functions in currently open code editor.
                         searchStr = match.Groups[0].Value;
-                        List<FunctionItem> funcItems = new List<FunctionItem>();
+                        List<FunctionItem> results = new List<FunctionItem>();
 
                         // Raise search finished event in user's thread.
-                        _dispatcher.BeginInvoke(new Action(() => { RaiseFunctionSearchFinishedEvent(funcItems); }));
+                        _dispatcher.BeginInvoke(new Action(() => { RaiseFunctionSearchFinishedEvent(results); }));
                     }
                     else
                     {
                         // Search for files in solution.
-                        List<ProjectItem> projectItems = new List<ProjectItem>();
+                        searchStr = searchStr.ToUpper();
+                        List<ProjectItem> results = new List<ProjectItem>();
+                        foreach (Project prj in _projectList)
+                        {
+                            lock (prj.Items)
+                            {
+                                foreach (ProjectItem item in prj.Items)
+                                {
+                                    if (item.Name.ToUpper().Contains(searchStr))
+                                    {
+                                        results.Add(item);
+                                    }
+                                }
+                            }
+                        }
 
                         // Raise search finished event in user's thread.
-                        _dispatcher.BeginInvoke(new Action(() => { RaiseFileSearchFinishedEvent(projectItems); }));
+                        _dispatcher.BeginInvoke(new Action(() => { RaiseFileSearchFinishedEvent(results); }));
                     }
                 }
                 else if (message.Type == MessageType.ProjectLoaded)
@@ -398,7 +483,14 @@ namespace QtCreatorPack
                 }
                 else if (message.Type == MessageType.ProjectUnloaded)
                 {
-                    _projectList.RemoveAll((Project prj) => { return prj.Hierarchy == message.Hierarchy; });
+                    _projectList.RemoveAll((Project prj) => {
+                        if (prj.Hierarchy == message.Hierarchy)
+                        {
+                            prj.StopListeningEvents();
+                            return true;
+                        }
+                        return false;
+                    });
                 }
                 else if (message.Type == MessageType.Stop)
                 {
@@ -406,33 +498,5 @@ namespace QtCreatorPack
                 }
             }
         }
-
-        //private void UpdateItemList()
-        //{
-        //    itemList.Clear();
-        //    IEnumHierarchies enumHierarchies;
-        //    Guid guid = Guid.Empty;
-        //    int result = solution.GetProjectEnum((uint)__VSENUMPROJFLAGS.EPF_LOADEDINSOLUTION, ref guid, out enumHierarchies);
-        //    if (result == VSConstants.S_OK)
-        //    {
-        //        IVsHierarchy[] hierarchyArray = new IVsHierarchy[1];
-        //        uint count;
-        //        enumHierarchies.Reset();
-
-        //        while (true)
-        //        {
-        //            result = enumHierarchies.Next(1, hierarchyArray, out count);
-        //            if (result == VSConstants.S_OK && count == 1)
-        //            {
-        //                IVsHierarchy hierarchy = hierarchyArray[0];
-        //                ProcessHierarchy(VSConstants.VSITEMID_ROOT, hierarchy);
-        //            }
-        //            else
-        //            {
-        //                break;
-        //            }
-        //        }
-        //    }
-        //}
     }
 }

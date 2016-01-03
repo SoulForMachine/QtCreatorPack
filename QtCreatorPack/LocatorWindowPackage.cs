@@ -73,6 +73,12 @@ namespace QtCreatorPack
             base.Initialize();
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            LocatorWindowCommand.Deinitialize();
+            base.Dispose(disposing);
+        }
+
         #endregion
     }
 }

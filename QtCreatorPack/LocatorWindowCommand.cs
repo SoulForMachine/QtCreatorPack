@@ -73,6 +73,7 @@ namespace QtCreatorPack
             _solution = ServiceProvider.GetService(typeof(SVsSolution)) as IVsSolution;
             _solution.AdviseSolutionEvents(_locator, out _cookie);
             _locatorWindow.SetLocator(_locator);
+            _locator.StartWorkerThread();
         }
 
         /// <summary>
@@ -101,7 +102,22 @@ namespace QtCreatorPack
         /// <param name="package">Owner package, not null.</param>
         public static void Initialize(Package package)
         {
-            Instance = new LocatorWindowCommand(package);
+            if (Instance == null)
+                Instance = new LocatorWindowCommand(package);
+        }
+
+        public static void Deinitialize()
+        {
+            if (Instance != null)
+            {
+                Instance.StopLocatorThread();
+                Instance = null;
+            }
+        }
+
+        private void StopLocatorThread()
+        {
+            _locator.StopWorkerThread();
         }
 
         /// <summary>

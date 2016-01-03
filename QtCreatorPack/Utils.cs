@@ -32,7 +32,7 @@ namespace QtCreatorPack
                 ++dirsEqual;
             }
 
-            return string.Join("\\", pathArr, dirsEqual, path.Length - dirsEqual);
+            return string.Join("\\", pathArr, dirsEqual, pathArr.Length - dirsEqual);
         }
     }
 }
