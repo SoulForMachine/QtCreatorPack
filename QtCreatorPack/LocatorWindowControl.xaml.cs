@@ -14,9 +14,9 @@ namespace QtCreatorPack
     using Microsoft.VisualStudio.Shell;
     using Microsoft.VisualStudio.Shell.Interop;
     using System.Collections.Generic;
-    /// <summary>
-    /// Interaction logic for LocatorWindowControl.
-    /// </summary>
+    using System.Windows.Data;    /// <summary>
+                                  /// Interaction logic for LocatorWindowControl.
+                                  /// </summary>
     public partial class LocatorWindowControl : UserControl
     {
         private Locator _locator;
@@ -32,42 +32,45 @@ namespace QtCreatorPack
         internal void SetLocator(Locator locator)
         {
             _locator = locator;
-            _locator.FileSearchFinishedEvent += _locator_FileSearchFinishedEvent;
-            _locator.FunctionSearchFinishedEvent += _locator_FunctionSearchFinishedEvent;
+            _locator.SearchFinishedEvent += _locator_SearchFinishedEvent;
         }
 
         private void CurrentItemActivated()
         {
-            if (listView.SelectedItem == null)
-                return;
-
-            if (listView.SelectedItem.GetType() == typeof(Locator.ProjectItem))
-            {
-                Locator.ProjectItem projectItem = listView.SelectedItem as Locator.ProjectItem;
-                projectItem.Item.Open(EnvDTE.Constants.vsViewKindPrimary).Activate();
-            }
-            else if (listView.SelectedItem.GetType() == typeof(Locator.FunctionItem))
-            {
-                Locator.FunctionItem funcItem = listView.SelectedItem as Locator.FunctionItem;
-            }
+            if (listView.SelectedItem != null)
+                ((Locator.Item)listView.SelectedItem).ExecuteAction();
         }
 
-        private void _locator_FunctionSearchFinishedEvent(object sender, Locator.FunctionSearchFinishedEventArgs items)
+        private void _locator_SearchFinishedEvent(object sender, Locator.SearchFinishedEventArgs args)
         {
-            throw new NotImplementedException();
-        }
-
-        private void _locator_FileSearchFinishedEvent(object sender, Locator.FileSearchFinishedEventArgs items)
-        {
-            foreach (Locator.ProjectItem prjItem in items.Items)
+            bool headerAdded = false;
+            foreach (Locator.Item item in args.Items)
             {
-                listView.Items.Add(prjItem);
+                if (!headerAdded)
+                {
+                    GridView gridView = listView.View as GridView;
+
+                    List<Locator.Item.HeaderData> headerDataList = item.GetHeaderData();
+                    foreach (Locator.Item.HeaderData headerData in headerDataList)
+                    {
+                        GridViewColumn column = new GridViewColumn();
+                        column.Header = headerData.Title;
+                        column.DisplayMemberBinding = new Binding(headerData.BoundPropertyName);
+                        gridView.Columns.Add(column);
+                    }
+                    headerAdded = true;
+                }
+
+                listView.Items.Add(item);
             }
         }
 
         private void textBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             listView.Items.Clear();
+            GridView gridView = listView.View as GridView;
+            gridView.Columns.Clear();
+
             if (_locator != null && textBox.Text.Length > 0)
                 _locator.SearchString(textBox.Text);
         }

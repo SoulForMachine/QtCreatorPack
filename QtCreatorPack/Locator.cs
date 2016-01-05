@@ -5,49 +5,94 @@ using Microsoft.VisualStudio.Shell.Interop;
 using System.Threading;
 using System.Windows.Threading;
 using System.Text.RegularExpressions;
+using Microsoft.VisualStudio.Shell;
+using EnvDTE;
 
 namespace QtCreatorPack
 {
     internal class Locator : IVsSolutionEvents3
     {
-        public class ProjectItem
+        public abstract class Item
         {
+            public class HeaderData
+            {
+                public HeaderData(string title, string boundPropertyName)
+                {
+                    Title = title;
+                    BoundPropertyName = boundPropertyName;
+                }
+                public string Title;
+                public string BoundPropertyName;
+            }
+
+            public abstract List<HeaderData> GetHeaderData();
+            public abstract void ExecuteAction();
+        }
+
+        public class ProjectItem : Item
+        {
+            private static List<HeaderData> _headerData = new List<HeaderData> {
+                new HeaderData("Name", "Name"),
+                new HeaderData("Path", "Path")
+            };
+
+            public override List<HeaderData> GetHeaderData()
+            {
+                return _headerData;
+            }
+
+            public override void ExecuteAction()
+            {
+                Item.Open(EnvDTE.Constants.vsViewKindPrimary).Activate();
+            }
+
             public EnvDTE.ProjectItem Item { get; set; }
             public string Name { get; set; }
             public string Path { get; set; }    // Project relative path.
         }
 
-        public class FunctionItem
+        public class CodeItem : Item
         {
-            public EnvDTE.CodeFunction Function { get; set; }
+            private static List<HeaderData> _headerData = new List<HeaderData> {
+                new HeaderData("Code element", "Name"),
+                new HeaderData("Fully qualified name", "FQName"),
+                new HeaderData("Comment", "Comment")
+            };
+
+            public override List<HeaderData> GetHeaderData()
+            {
+                return _headerData;
+            }
+
+            public override void ExecuteAction()
+            {
+                EnvDTE.Window window = CodeElement.ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
+                if (window != null)
+                {
+                    window.Activate();
+                    EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
+                    sel.MoveToPoint(CodeElement.StartPoint, false);
+                }
+            }
+
+            public EnvDTE.CodeElement CodeElement { get; set; }
             public string Name { get; set; }
-            public string Signature { get; set; }
+            public string FQName { get; set; }
+            public string Comment{ get; set; }
         }
 
-        public class FileSearchFinishedEventArgs
+        public class SearchFinishedEventArgs
         {
-            public FileSearchFinishedEventArgs(List<ProjectItem> items)
+            public SearchFinishedEventArgs(IEnumerable<Item> items)
             {
                 Items = items;
             }
 
-            public List<ProjectItem> Items { get; private set; }
+            public IEnumerable<Item> Items { get; private set; }
         }
 
-        public class FunctionSearchFinishedEventArgs
-        {
-            public FunctionSearchFinishedEventArgs(List<FunctionItem> items)
-            {
-                Items = items;
-            }
-
-            public List<FunctionItem> Items { get; private set; }
-        }
-
-        public delegate void FileSearchFinishedEventHandler(object sender, FileSearchFinishedEventArgs items);
-        public delegate void FunctionSearchFinishedEventHandler(object sender, FunctionSearchFinishedEventArgs items);
-        public event FileSearchFinishedEventHandler FileSearchFinishedEvent;
-        public event FunctionSearchFinishedEventHandler FunctionSearchFinishedEvent;
+        public delegate void SearchFinishedEventHandler(object sender, SearchFinishedEventArgs args);
+        public event SearchFinishedEventHandler SearchFinishedEvent;
 
         private enum MessageType
         {
@@ -253,9 +298,11 @@ namespace QtCreatorPack
         private Message _searchMessage = null;  // This one is processed after the queue is empty.
         private Queue<Message> _messageQueue = new Queue<Message>();
         private Dispatcher _dispatcher;
+        private EnvDTE.DTE _dte;
 
         public Locator()
         {
+            _dte = Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
             _dispatcher = Dispatcher.FromThread(System.Threading.Thread.CurrentThread);
             _workerThread = new System.Threading.Thread(WorkerThreadFunc);
         }
@@ -377,16 +424,10 @@ namespace QtCreatorPack
 
         #endregion
 
-        protected virtual void RaiseFileSearchFinishedEvent(List<ProjectItem> itemList)
+        protected virtual void RaiseSearchFinishedEvent(IEnumerable<Item> itemList)
         {
-            if (FileSearchFinishedEvent != null)
-                FileSearchFinishedEvent(this, new FileSearchFinishedEventArgs(itemList));
-        }
-
-        protected virtual void RaiseFunctionSearchFinishedEvent(List<FunctionItem> itemList)
-        {
-            if (FunctionSearchFinishedEvent != null)
-                FunctionSearchFinishedEvent(this, new FunctionSearchFinishedEventArgs(itemList));
+            if (SearchFinishedEvent != null)
+                SearchFinishedEvent(this, new SearchFinishedEventArgs(itemList));
         }
 
         private void ProjectLoaded(IVsHierarchy hierarchy)
@@ -417,6 +458,135 @@ namespace QtCreatorPack
             }
         }
 
+        private void DebugPrint(string msg)
+        {
+            System.Diagnostics.Debug.Print(msg);
+        }
+
+        private void GetCodeElements(List<CodeItem> results, string searchStr, CodeElements codeElements)
+        {
+            if (codeElements == null)
+                return;
+
+            foreach (CodeElement ce in codeElements)
+            {
+                bool match = searchStr.Length == 0 || ce.Name.ToUpper().Contains(searchStr);
+
+                if (ce.Kind == vsCMElement.vsCMElementNamespace)
+                {
+                    CodeNamespace nsp = ce as CodeNamespace;
+                    GetCodeElements(results, searchStr, nsp.Members);
+                }
+                else if (ce.Kind == vsCMElement.vsCMElementStruct)
+                {
+                    CodeStruct str = ce as CodeStruct;
+                    if (str != null)
+                    {
+                        if (match)
+                        {
+                            CodeItem item = new CodeItem();
+                            item.CodeElement = ce;
+                            item.Name = str.Name;
+                            item.FQName = str.FullName;
+                            item.Comment = str.Comment;
+                            results.Add(item);
+                        }
+
+                        if (str.Children != null)
+                            GetCodeElements(results, searchStr, str.Members);
+                    }
+                }
+                else if (ce.Kind == vsCMElement.vsCMElementClass)
+                {
+                    CodeClass cls = ce as CodeClass;
+                    if (cls != null)
+                    {
+                        if (match)
+                        {
+                            CodeItem item = new CodeItem();
+                            item.CodeElement = ce;
+                            item.Name = cls.Name;
+                            item.FQName = cls.FullName;
+                            item.Comment = cls.Comment;
+                            results.Add(item);
+                        }
+
+                        if (cls.Children != null)
+                            GetCodeElements(results, searchStr, cls.Members);
+                    }
+                    else
+                    {
+                        CodeStruct str = ce as CodeStruct;
+                        if (str != null)
+                        {
+                            if (match)
+                            {
+                                CodeItem item = new CodeItem();
+                                item.CodeElement = ce;
+                                item.Name = str.Name;
+                                item.FQName = str.FullName;
+                                item.Comment = str.Comment;
+                                results.Add(item);
+                            }
+
+                            if (str.Children != null)
+                                GetCodeElements(results, searchStr, str.Members);
+                        }
+                    }
+                }
+                else if (ce.Kind == vsCMElement.vsCMElementFunction)
+                {
+                    CodeFunction f = ce as CodeFunction;
+                    if (f != null)
+                    {
+                        if (match)
+                        {
+                            CodeItem item = new CodeItem();
+                            item.CodeElement = ce;
+                            item.Name = f.get_Prototype((int)vsCMPrototype.vsCMPrototypeUniqueSignature);
+                            item.FQName = f.FullName;
+                            item.Comment = f.Comment;
+                            results.Add(item);
+                        }
+                    }
+                }
+                else if (ce.Kind == vsCMElement.vsCMElementEnum)
+                {
+                    CodeEnum enm = ce as CodeEnum;
+                    if (enm != null)
+                    {
+                        if (match)
+                        {
+                            CodeItem item = new CodeItem();
+                            item.CodeElement = ce;
+                            item.Name = enm.Name;
+                            item.FQName = enm.FullName;
+                            item.Comment = enm.Comment;
+                            results.Add(item);
+                        }
+                    }
+                }
+                else if (ce.Kind == vsCMElement.vsCMElementInterface)
+                {
+                    CodeInterface intf = ce as CodeInterface;
+                    if (intf != null)
+                    {
+                        if (match)
+                        {
+                            CodeItem item = new CodeItem();
+                            item.CodeElement = ce;
+                            item.Name = intf.Name;
+                            item.FQName = intf.FullName;
+                            item.Comment = intf.Comment;
+                            results.Add(item);
+                        }
+
+                        GetCodeElements(results, searchStr, intf.Members);
+                    }
+                }
+            }
+        }
+
         private void WorkerThreadFunc()
         {
             while (true)
@@ -441,17 +611,25 @@ namespace QtCreatorPack
 
                 if (message.Type == MessageType.SearchString)
                 {
-                    string searchStr = message.Text.Trim();
-                    Regex regex = new Regex(@"\.\s+(.+)");
+                    string searchStr = message.Text.TrimStart();
+                    Regex regex = new Regex(@"\.\s+(.*)");
                     Match match = regex.Match(searchStr);
                     if (match.Success)
                     {
-                        // Search for functions in currently open code editor.
-                        searchStr = match.Groups[0].Value;
-                        List<FunctionItem> results = new List<FunctionItem>();
+                        if (_dte != null)
+                        {
+                            // Search for functions in currently open code editor.
+                            searchStr = match.Groups[1].Value.ToUpper();
+                            List<CodeItem> results = new List<CodeItem>();
 
-                        // Raise search finished event in user's thread.
-                        _dispatcher.BeginInvoke(new Action(() => { RaiseFunctionSearchFinishedEvent(results); }));
+                            if (_dte.ActiveDocument != null)
+                            {
+                                GetCodeElements(results, searchStr, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
+                            }
+
+                            // Raise search finished event in user's thread.
+                            _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
+                        }
                     }
                     else
                     {
@@ -473,7 +651,7 @@ namespace QtCreatorPack
                         }
 
                         // Raise search finished event in user's thread.
-                        _dispatcher.BeginInvoke(new Action(() => { RaiseFileSearchFinishedEvent(results); }));
+                        _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
                     }
                 }
                 else if (message.Type == MessageType.ProjectLoaded)
