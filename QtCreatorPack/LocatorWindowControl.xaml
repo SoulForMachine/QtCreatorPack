@@ -14,7 +14,7 @@
         <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" DockPanel.Dock="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
                  Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
                  BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
-                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="0,3,0,0">
+                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="0,3,0,0" PreviewKeyDown="textBox_PreviewKeyDown">
             
             
         </TextBox>

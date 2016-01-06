@@ -44,12 +44,14 @@ namespace QtCreatorPack
         private void _locator_SearchFinishedEvent(object sender, Locator.SearchFinishedEventArgs args)
         {
             bool headerAdded = false;
+            listView.Items.Clear();
+            GridView gridView = listView.View as GridView;
+            gridView.Columns.Clear();
+
             foreach (Locator.Item item in args.Items)
             {
                 if (!headerAdded)
                 {
-                    GridView gridView = listView.View as GridView;
-
                     List<Locator.Item.HeaderData> headerDataList = item.GetHeaderData();
                     foreach (Locator.Item.HeaderData headerData in headerDataList)
                     {
@@ -73,6 +75,36 @@ namespace QtCreatorPack
 
             if (_locator != null && textBox.Text.Length > 0)
                 _locator.SearchString(textBox.Text);
+        }
+
+        private void textBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.Key)
+            {
+                case Key.Down:
+                    if (listView.SelectedIndex == -1)
+                    {
+                        listView.SelectedIndex = 0;
+                    }
+                    else if (listView.SelectedIndex < listView.Items.Count - 1)
+                    {
+                        ++listView.SelectedIndex;
+                    }
+                    e.Handled = true;
+                    break;
+
+                case Key.Up:
+                    if (listView.SelectedIndex > 0)
+                    {
+                        --listView.SelectedIndex;
+                    }
+                    e.Handled = true;
+                    break;
+                case Key.Enter:
+                    CurrentItemActivated();
+                    e.Handled = true;
+                    break;
+            }
         }
 
         private void listView_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)

@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.Shell;
 using EnvDTE;
+using Microsoft.VisualStudio.VCCodeModel;
 
 namespace QtCreatorPack
 {
@@ -291,7 +292,7 @@ namespace QtCreatorPack
             }
         }
 
-        private volatile bool _interruptWork = false;
+        private volatile bool _cancelSearch = false;
         private List<Project> _projectList = new List<Project>();
         private System.Threading.Thread _workerThread;
         private readonly object _workerThreadSync = new object();
@@ -299,6 +300,8 @@ namespace QtCreatorPack
         private Queue<Message> _messageQueue = new Queue<Message>();
         private Dispatcher _dispatcher;
         private EnvDTE.DTE _dte;
+        private string _currentSourceFilePath;
+        private string _currentSearchString;
 
         public Locator()
         {
@@ -314,7 +317,7 @@ namespace QtCreatorPack
                 lock (_workerThreadSync)
                 {
                     _searchMessage = Message.SearchString(text);
-                    _interruptWork = true;
+                    _cancelSearch = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
             }
@@ -333,7 +336,7 @@ namespace QtCreatorPack
                 lock (_workerThreadSync)
                 {
                     _messageQueue.Enqueue(Message.Stop());
-                    _interruptWork = true;
+                    _cancelSearch = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
 
@@ -438,7 +441,6 @@ namespace QtCreatorPack
                 {
                     Message msg = Message.ProjectLoaded(hierarchy);
                     _messageQueue.Enqueue(msg);
-                    _interruptWork = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
             }
@@ -452,7 +454,6 @@ namespace QtCreatorPack
                 {
                     Message msg = Message.ProjectUnloaded(hierarchy);
                     _messageQueue.Enqueue(msg);
-                    _interruptWork = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
             }
@@ -463,37 +464,51 @@ namespace QtCreatorPack
             System.Diagnostics.Debug.Print(msg);
         }
 
-        private void GetCodeElements(List<CodeItem> results, string searchStr, CodeElements codeElements)
+        private void GetCodeElements(List<CodeItem> results, CodeElements codeElements)
         {
             if (codeElements == null)
                 return;
 
             foreach (CodeElement ce in codeElements)
             {
-                bool match = searchStr.Length == 0 || ce.Name.ToUpper().Contains(searchStr);
+                if (_cancelSearch)
+                    return;
+
+                bool match = _currentSearchString.Length == 0 || ce.Name.ToUpper().Contains(_currentSearchString);
 
                 if (ce.Kind == vsCMElement.vsCMElementNamespace)
                 {
                     CodeNamespace nsp = ce as CodeNamespace;
-                    GetCodeElements(results, searchStr, nsp.Members);
+                    GetCodeElements(results, nsp.Children);
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementStruct)
                 {
                     CodeStruct str = ce as CodeStruct;
                     if (str != null)
                     {
-                        if (match)
+                        VCCodeStruct vcStr = str as VCCodeStruct;
+                        if (vcStr != null)
                         {
-                            CodeItem item = new CodeItem();
-                            item.CodeElement = ce;
-                            item.Name = str.Name;
-                            item.FQName = str.FullName;
-                            item.Comment = str.Comment;
-                            results.Add(item);
-                        }
+                            // Skip forward declarations
+                            if (vcStr.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                if (match)
+                                {
+                                    CodeItem item = new CodeItem();
+                                    item.CodeElement = ce;
+                                    item.Name = str.Name;
+                                    item.FQName = str.FullName;
+                                    item.Comment = str.Comment;
+                                    results.Add(item);
+                                }
 
-                        if (str.Children != null)
-                            GetCodeElements(results, searchStr, str.Members);
+                                GetCodeElements(results, vcStr.Children);
+                            }
+                        }
+                        else
+                        {
+                            GetCodeElements(results, str.Children);
+                        }
                     }
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementClass)
@@ -501,36 +516,28 @@ namespace QtCreatorPack
                     CodeClass cls = ce as CodeClass;
                     if (cls != null)
                     {
-                        if (match)
+                        VCCodeClass vcCls = cls as VCCodeClass;
+                        if (vcCls != null)
                         {
-                            CodeItem item = new CodeItem();
-                            item.CodeElement = ce;
-                            item.Name = cls.Name;
-                            item.FQName = cls.FullName;
-                            item.Comment = cls.Comment;
-                            results.Add(item);
-                        }
-
-                        if (cls.Children != null)
-                            GetCodeElements(results, searchStr, cls.Members);
-                    }
-                    else
-                    {
-                        CodeStruct str = ce as CodeStruct;
-                        if (str != null)
-                        {
-                            if (match)
+                            // Skip forward declarations
+                            if (vcCls.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
                             {
-                                CodeItem item = new CodeItem();
-                                item.CodeElement = ce;
-                                item.Name = str.Name;
-                                item.FQName = str.FullName;
-                                item.Comment = str.Comment;
-                                results.Add(item);
-                            }
+                                if (match)
+                                {
+                                    CodeItem item = new CodeItem();
+                                    item.CodeElement = ce;
+                                    item.Name = cls.Name;
+                                    item.FQName = cls.FullName;
+                                    item.Comment = cls.Comment;
+                                    results.Add(item);
+                                }
 
-                            if (str.Children != null)
-                                GetCodeElements(results, searchStr, str.Members);
+                                GetCodeElements(results, vcCls.Children);
+                            }
+                        }
+                        else
+                        {
+                            GetCodeElements(results, cls.Children);
                         }
                     }
                 }
@@ -581,7 +588,7 @@ namespace QtCreatorPack
                             results.Add(item);
                         }
 
-                        GetCodeElements(results, searchStr, intf.Members);
+                        GetCodeElements(results, intf.Children);
                     }
                 }
             }
@@ -594,7 +601,6 @@ namespace QtCreatorPack
                 Message message;
                 lock (_workerThreadSync)
                 {
-                    _interruptWork = false;
                     while (_searchMessage == null && _messageQueue.Count == 0)
                         Monitor.Wait(_workerThreadSync);
 
@@ -606,6 +612,7 @@ namespace QtCreatorPack
                     {
                         message = _searchMessage;
                         _searchMessage = null;
+                        _cancelSearch = false;
                     }
                 }
 
@@ -622,13 +629,17 @@ namespace QtCreatorPack
                             searchStr = match.Groups[1].Value.ToUpper();
                             List<CodeItem> results = new List<CodeItem>();
 
-                            if (_dte.ActiveDocument != null)
+                            if (_dte.ActiveDocument != null &&
+                                _dte.ActiveDocument.ProjectItem.FileCodeModel != null)
                             {
-                                GetCodeElements(results, searchStr, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
+                                _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
+                                _currentSearchString = searchStr;
+                                GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
                             }
 
                             // Raise search finished event in user's thread.
-                            _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
+                            if (!_cancelSearch)
+                                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
                         }
                     }
                     else
@@ -638,10 +649,16 @@ namespace QtCreatorPack
                         List<ProjectItem> results = new List<ProjectItem>();
                         foreach (Project prj in _projectList)
                         {
+                            if (_cancelSearch)
+                                break;
+
                             lock (prj.Items)
                             {
                                 foreach (ProjectItem item in prj.Items)
                                 {
+                                    if (_cancelSearch)
+                                        break;
+
                                     if (item.Name.ToUpper().Contains(searchStr))
                                     {
                                         results.Add(item);
@@ -651,7 +668,8 @@ namespace QtCreatorPack
                         }
 
                         // Raise search finished event in user's thread.
-                        _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
+                        if (!_cancelSearch)
+                            _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
                     }
                 }
                 else if (message.Type == MessageType.ProjectLoaded)
