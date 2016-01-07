@@ -117,5 +117,11 @@ namespace QtCreatorPack
         {
             CurrentItemActivated();
         }
+
+        private void buttonClear_Click(object sender, RoutedEventArgs e)
+        {
+            textBox.Clear();
+            textBox.Focus();
+        }
     }
 }

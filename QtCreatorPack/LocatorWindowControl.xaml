@@ -14,10 +14,7 @@
         <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" DockPanel.Dock="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
                  Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
                  BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
-                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="0,3,0,0" PreviewKeyDown="textBox_PreviewKeyDown">
-            
-            
-        </TextBox>
+                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="0,3,195,0" PreviewKeyDown="textBox_PreviewKeyDown" MaxWidth="400" MinWidth="400" HorizontalAlignment="Left"/>
 
         <ListView x:Name="listView" Margin="0,25,0,0" KeyDown="listView_KeyDown" MouseDoubleClick="listView_MouseDoubleClick" SelectionMode="Single"
                   Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
@@ -127,7 +124,7 @@
                 <Style x:Key="ContainerStyle"  TargetType="ListViewItem">
                     <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBackgroundKey}}" />
                     <Setter Property="Foreground" Value="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowTextKey}}" />
-                    
+
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListViewItem">
@@ -169,5 +166,37 @@
                 </GridView>
             </ListView.View>
         </ListView>
+        <Button x:Name="buttonClear" Content="" HorizontalAlignment="Left" Margin="405,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear" BorderThickness="0" Height="20" Click="buttonClear_Click" >
+            <Button.Resources>
+                <Style TargetType="Button">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border>
+                                    <Border.Style>
+                                        <Style TargetType="{x:Type Border}">
+                                            <Setter Property="Background">
+                                                <Setter.Value>
+                                                    <ImageBrush ImageSource="/QtCreatorPack;component/Resources/clear.png" Stretch="None"/>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background">
+                                                        <Setter.Value>
+                                                            <ImageBrush ImageSource="/QtCreatorPack;component/Resources/clear.png" Stretch="None"/>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Button.Resources>
+        </Button>
     </Grid>
 </UserControl>

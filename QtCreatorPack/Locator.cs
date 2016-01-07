@@ -67,19 +67,34 @@ namespace QtCreatorPack
 
             public override void ExecuteAction()
             {
-                EnvDTE.Window window = CodeElement.ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
-                if (window != null)
+                if (ProjectItem != null)
                 {
-                    window.Activate();
-                    EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
-                    sel.MoveToPoint(CodeElement.StartPoint, false);
+                    EnvDTE.Window window = ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
+                    if (window != null)
+                    {
+                        window.Activate();
+                        EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
+                        sel.MoveToAbsoluteOffset(ElementOffset, false);
+                    }
+                }
+                else
+                {
+                    EnvDTE.Window window = CodeElement.ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
+                    if (window != null)
+                    {
+                        window.Activate();
+                        EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
+                        sel.MoveToPoint(CodeElement.StartPoint, false);
+                    }
                 }
             }
 
             public EnvDTE.CodeElement CodeElement { get; set; }
+            public EnvDTE.ProjectItem ProjectItem { get; set; }
+            public int ElementOffset { get; set; }
             public string Name { get; set; }
             public string FQName { get; set; }
-            public string Comment{ get; set; }
+            public string Comment { get; set; }
         }
 
         public class SearchFinishedEventArgs
@@ -543,33 +558,60 @@ namespace QtCreatorPack
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementFunction)
                 {
-                    CodeFunction f = ce as CodeFunction;
-                    if (f != null)
+                    if (match)
                     {
-                        if (match)
+                        CodeFunction f = ce as CodeFunction;
+                        if (f != null)
                         {
                             CodeItem item = new CodeItem();
                             item.CodeElement = ce;
                             item.Name = f.get_Prototype((int)vsCMPrototype.vsCMPrototypeUniqueSignature);
                             item.FQName = f.FullName;
                             item.Comment = f.Comment;
+                            GetCppInfo(ce, item);
                             results.Add(item);
                         }
                     }
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementEnum)
                 {
-                    CodeEnum enm = ce as CodeEnum;
-                    if (enm != null)
+                    if (match)
                     {
-                        if (match)
+                        CodeEnum enm = ce as CodeEnum;
+                        if (enm != null)
                         {
-                            CodeItem item = new CodeItem();
-                            item.CodeElement = ce;
-                            item.Name = enm.Name;
-                            item.FQName = enm.FullName;
-                            item.Comment = enm.Comment;
-                            results.Add(item);
+                            VCCodeEnum vcEnm = enm as VCCodeEnum;
+
+                            // Skip forward declarations
+                            if (vcEnm == null || vcEnm.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                CodeItem item = new CodeItem();
+                                item.CodeElement = ce;
+                                item.Name = enm.Name;
+                                item.FQName = enm.FullName;
+                                item.Comment = enm.Comment;
+                                results.Add(item);
+                            }
+                        }
+                    }
+                }
+                else if (ce.Kind == vsCMElement.vsCMElementUnion)
+                {
+                    if (match)
+                    {
+                        VCCodeUnion vcUn = ce as VCCodeUnion;
+                        if (vcUn != null)
+                        {
+                            // Skip forward declarations
+                            if (vcUn.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                CodeItem item = new CodeItem();
+                                item.CodeElement = ce;
+                                item.Name = vcUn.Name;
+                                item.FQName = vcUn.FullName;
+                                item.Comment = vcUn.Comment;
+                                results.Add(item);
+                            }
                         }
                     }
                 }
@@ -590,6 +632,43 @@ namespace QtCreatorPack
 
                         GetCodeElements(results, intf.Children);
                     }
+                }
+            }
+        }
+
+        private void GetCppInfo(CodeElement ce, CodeItem item)
+        {
+            item.ProjectItem = null;
+            item.ElementOffset = 1;
+            VCCodeElement vcEl = ce as VCCodeElement;
+
+            if (vcEl != null)
+            {
+                try
+                {
+                    TextPoint def = vcEl.StartPointOf[vsCMPart.vsCMPartName, vsCMWhere.vsCMWhereDefinition];
+                    if (def.Parent.Parent.FullName.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        item.ProjectItem = def.Parent.Parent.ProjectItem;
+                        item.ElementOffset = def.AbsoluteCharOffset;
+                    }
+                }
+                catch
+                { }
+
+                if (item.ProjectItem == null)
+                {
+                    try
+                    {
+                        TextPoint decl = vcEl.StartPointOf[vsCMPart.vsCMPartName, vsCMWhere.vsCMWhereDeclaration];
+                        if (decl.Parent.Parent.FullName.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            item.ProjectItem = decl.Parent.Parent.ProjectItem;
+                            item.ElementOffset = decl.AbsoluteCharOffset;
+                        }
+                    }
+                    catch
+                    { }
                 }
             }
         }

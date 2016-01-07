@@ -73,6 +73,9 @@
     <VSCTCompile Include="LocatorWindowPackage.vsct">
       <ResourceName>Menus.ctmenu</ResourceName>
     </VSCTCompile>
+    <Resource Include="Resources\clear.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
     <Content Include="Resources\LocatorWindowCommand.png" />
     <Content Include="Resources\LocatorWindowPackage.ico" />
     <Content Include="stylesheet.css" />
