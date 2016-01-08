@@ -14,9 +14,11 @@ namespace QtCreatorPack
     using Microsoft.VisualStudio.Shell;
     using Microsoft.VisualStudio.Shell.Interop;
     using System.Collections.Generic;
-    using System.Windows.Data;    /// <summary>
-                                  /// Interaction logic for LocatorWindowControl.
-                                  /// </summary>
+    using System.Windows.Data;
+
+    /// <summary>
+    /// Interaction logic for LocatorWindowControl.
+    /// </summary>
     public partial class LocatorWindowControl : UserControl
     {
         private Locator _locator;
@@ -27,54 +29,77 @@ namespace QtCreatorPack
         public LocatorWindowControl()
         {
             this.InitializeComponent();
+            progressBar.Visibility = Visibility.Hidden;
         }
 
         internal void SetLocator(Locator locator)
         {
             _locator = locator;
-            _locator.SearchFinishedEvent += _locator_SearchFinishedEvent;
+            _locator.SearchResultEvent += _locator_SearchResultEvent;
         }
 
-        private void CurrentItemActivated()
+        private bool CurrentItemActivated()
         {
             if (listView.SelectedItem != null)
-                ((Locator.Item)listView.SelectedItem).ExecuteAction();
-        }
-
-        private void _locator_SearchFinishedEvent(object sender, Locator.SearchFinishedEventArgs args)
-        {
-            bool headerAdded = false;
-            listView.Items.Clear();
-            GridView gridView = listView.View as GridView;
-            gridView.Columns.Clear();
-
-            foreach (Locator.Item item in args.Items)
             {
-                if (!headerAdded)
-                {
-                    List<Locator.Item.HeaderData> headerDataList = item.GetHeaderData();
-                    foreach (Locator.Item.HeaderData headerData in headerDataList)
-                    {
-                        GridViewColumn column = new GridViewColumn();
-                        column.Header = headerData.Title;
-                        column.DisplayMemberBinding = new Binding(headerData.BoundPropertyName);
-                        gridView.Columns.Add(column);
-                    }
-                    headerAdded = true;
-                }
-
-                listView.Items.Add(item);
+                ((Locator.Item)listView.SelectedItem).ExecuteAction();
+                return true;
             }
+            return false;
         }
 
-        private void textBox_TextChanged(object sender, TextChangedEventArgs e)
+        private void StartNewSearch()
         {
             listView.Items.Clear();
             GridView gridView = listView.View as GridView;
             gridView.Columns.Clear();
 
             if (_locator != null && textBox.Text.Length > 0)
+            {
+                progressBar.Visibility = Visibility.Visible;
                 _locator.SearchString(textBox.Text);
+            }
+        }
+
+        private void _locator_SearchResultEvent(object sender, Locator.SearchResultEventArgs args)
+        {
+            if (args.Type == Locator.SearchResultEventArgs.ResultType.Data)
+            {
+                foreach (Locator.Item item in args.Items)
+                    listView.Items.Add(item);
+            }
+            else if (args.Type == Locator.SearchResultEventArgs.ResultType.Progress)
+            {
+                // Update progress bar.
+                bool indeterminate = (args.Percent < 0);
+                if (progressBar.IsIndeterminate != indeterminate)
+                    progressBar.IsIndeterminate = indeterminate;
+                progressBar.Value = args.Percent;
+            }
+            else if (args.Type == Locator.SearchResultEventArgs.ResultType.HeaderData)
+            {
+                listView.Items.Clear();
+                GridView gridView = listView.View as GridView;
+                gridView.Columns.Clear();
+
+                foreach (Locator.Item.HeaderData headerData in args.HeaderData)
+                {
+                    GridViewColumn column = new GridViewColumn();
+                    column.Header = headerData.Title;
+                    column.DisplayMemberBinding = new Binding(headerData.BoundPropertyName);
+                    column.Width = headerData.Width;
+                    gridView.Columns.Add(column);
+                }
+            }
+            else if (args.Type == Locator.SearchResultEventArgs.ResultType.Finished)
+            {
+                progressBar.Visibility = Visibility.Hidden;
+            }
+        }
+
+        private void textBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            StartNewSearch();
         }
 
         private void textBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -100,10 +125,19 @@ namespace QtCreatorPack
                     }
                     e.Handled = true;
                     break;
+
                 case Key.Enter:
-                    CurrentItemActivated();
-                    e.Handled = true;
+                    if (CurrentItemActivated())
+                        e.Handled = true;
                     break;
+            }
+        }
+
+        private void textBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && !e.IsRepeat)
+            {
+                StartNewSearch();
             }
         }
 

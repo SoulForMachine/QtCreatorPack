@@ -17,29 +17,30 @@ namespace QtCreatorPack
         {
             public class HeaderData
             {
-                public HeaderData(string title, string boundPropertyName)
+                public HeaderData(string title, string boundPropertyName, int width)
                 {
                     Title = title;
                     BoundPropertyName = boundPropertyName;
+                    Width = width;
                 }
                 public string Title;
                 public string BoundPropertyName;
+                public int Width;
             }
 
-            public abstract List<HeaderData> GetHeaderData();
             public abstract void ExecuteAction();
         }
 
         public class ProjectItem : Item
         {
             private static List<HeaderData> _headerData = new List<HeaderData> {
-                new HeaderData("Name", "Name"),
-                new HeaderData("Path", "Path")
+                new HeaderData("Name", "Name", 600),
+                new HeaderData("Path", "Path", 800)
             };
 
-            public override List<HeaderData> GetHeaderData()
+            public static List<HeaderData> HeaderDataList
             {
-                return _headerData;
+                get { return _headerData; }
             }
 
             public override void ExecuteAction()
@@ -55,14 +56,14 @@ namespace QtCreatorPack
         public class CodeItem : Item
         {
             private static List<HeaderData> _headerData = new List<HeaderData> {
-                new HeaderData("Code element", "Name"),
-                new HeaderData("Fully qualified name", "FQName"),
-                new HeaderData("Comment", "Comment")
+                new HeaderData("Code element", "Name", 600),
+                new HeaderData("Fully qualified name", "FQName", 400),
+                new HeaderData("Comment", "Comment", 800)
             };
 
-            public override List<HeaderData> GetHeaderData()
+            public static List<HeaderData> HeaderDataList
             {
-                return _headerData;
+                get { return _headerData; }
             }
 
             public override void ExecuteAction()
@@ -97,26 +98,38 @@ namespace QtCreatorPack
             public string Comment { get; set; }
         }
 
-        public class SearchFinishedEventArgs
+        public class SearchResultEventArgs
         {
-            public SearchFinishedEventArgs(IEnumerable<Item> items)
+            public enum ResultType
             {
-                Items = items;
+                HeaderData,
+                Data,
+                Progress,
+                Finished
             }
 
+            public SearchResultEventArgs(ResultType type, int percent, IEnumerable<Item> items, IEnumerable<Item.HeaderData> headerData)
+            {
+                Type = type;
+                Items = items;
+                HeaderData = headerData;
+                Percent = percent;
+            }
+
+            public ResultType Type;
             public IEnumerable<Item> Items { get; private set; }
+            public IEnumerable<Item.HeaderData> HeaderData { get; private set; }
+            public int Percent { get; private set; }
         }
 
-        public delegate void SearchFinishedEventHandler(object sender, SearchFinishedEventArgs args);
-        public event SearchFinishedEventHandler SearchFinishedEvent;
+        public delegate void SearchResultEventHandler(object sender, SearchResultEventArgs args);
+        public event SearchResultEventHandler SearchResultEvent;
 
         private enum MessageType
         {
             SearchString,
             ProjectLoaded,
             ProjectUnloaded,
-            ItemAdded,
-            ItemRemoved,
             Stop
         }
 
@@ -179,7 +192,6 @@ namespace QtCreatorPack
                     Name = string.Empty;
                 Items = new List<ProjectItem>();
                 ProcessHierarchy(VSConstants.VSITEMID_ROOT, hierarchy);
-                //Items.Sort((ProjectItem item1, ProjectItem item2) => { return item1.Name.CompareTo(item2.Name); });
                 Hierarchy.AdviseHierarchyEvents(this, out _cookie);
             }
 
@@ -307,16 +319,19 @@ namespace QtCreatorPack
             }
         }
 
+        private const int RESULT_FLUSH_TIMEOUT = 300;   // milliseconds
+
         private volatile bool _cancelSearch = false;
         private List<Project> _projectList = new List<Project>();
         private System.Threading.Thread _workerThread;
         private readonly object _workerThreadSync = new object();
         private Message _searchMessage = null;  // This one is processed after the queue is empty.
         private Queue<Message> _messageQueue = new Queue<Message>();
-        private Dispatcher _dispatcher;
+        private Dispatcher _dispatcher;         // Dispatcher for the thread that created the Locator.
         private EnvDTE.DTE _dte;
         private string _currentSourceFilePath;
         private string _currentSearchString;
+        private System.Diagnostics.Stopwatch _resultFlushStopwatch;
 
         public Locator()
         {
@@ -442,10 +457,10 @@ namespace QtCreatorPack
 
         #endregion
 
-        protected virtual void RaiseSearchFinishedEvent(IEnumerable<Item> itemList)
+        protected virtual void RaiseSearchResultEvent(SearchResultEventArgs.ResultType type, int percent, IEnumerable<Item> items = null, IEnumerable<Item.HeaderData> headerData = null)
         {
-            if (SearchFinishedEvent != null)
-                SearchFinishedEvent(this, new SearchFinishedEventArgs(itemList));
+            if (SearchResultEvent != null)
+                SearchResultEvent(this, new SearchResultEventArgs(type, percent, items, headerData));
         }
 
         private void ProjectLoaded(IVsHierarchy hierarchy)
@@ -474,9 +489,155 @@ namespace QtCreatorPack
             }
         }
 
-        private void DebugPrint(string msg)
+        private void WorkerThreadFunc()
         {
-            System.Diagnostics.Debug.Print(msg);
+            while (true)
+            {
+                Message message;
+                lock (_workerThreadSync)
+                {
+                    while (_searchMessage == null && _messageQueue.Count == 0)
+                        Monitor.Wait(_workerThreadSync);
+
+                    if (_messageQueue.Count > 0)
+                    {
+                        message = _messageQueue.Dequeue();
+                    }
+                    else // search message must be set
+                    {
+                        message = _searchMessage;
+                        _searchMessage = null;
+                        _cancelSearch = false;
+                    }
+                }
+
+                if (message.Type == MessageType.SearchString)
+                {
+                    string searchStr = message.Text.TrimStart();
+                    Regex regex = new Regex(@"\.\s+(.*)");
+                    Match match = regex.Match(searchStr);
+                    if (match.Success)
+                    {
+                        searchStr = match.Groups[1].Value.ToUpper();
+                        SearchCodeElements(searchStr);
+                    }
+                    else
+                    {
+                        SearchFilesInSolution(searchStr);
+                    }
+                }
+                else if (message.Type == MessageType.ProjectLoaded)
+                {
+                    Project project = new Project(message.Hierarchy);
+                    _projectList.Add(project);
+                }
+                else if (message.Type == MessageType.ProjectUnloaded)
+                {
+                    _projectList.RemoveAll((Project prj) => {
+                        if (prj.Hierarchy == message.Hierarchy)
+                        {
+                            prj.StopListeningEvents();
+                            return true;
+                        }
+                        return false;
+                    });
+                }
+                else if (message.Type == MessageType.Stop)
+                {
+                    break;
+                }
+            }
+        }
+
+        private void SearchFilesInSolution(string searchStr)
+        {
+            if (_projectList.Count > 0)
+            {
+                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.HeaderData, 0, null, ProjectItem.HeaderDataList); }));
+
+                searchStr = searchStr.ToUpper();
+                List<ProjectItem> results = new List<ProjectItem>();
+                int count = 0;
+                int totalItemCount = 0;
+                int prevPercent = -1;
+                _resultFlushStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                foreach (Project prj in _projectList)
+                    totalItemCount += prj.Items.Count;
+
+                foreach (Project prj in _projectList)
+                {
+                    if (_cancelSearch)
+                        break;
+
+                    lock (prj.Items)
+                    {
+                        foreach (ProjectItem item in prj.Items)
+                        {
+                            if (_cancelSearch)
+                                break;
+
+                            int percent = (int)Math.Round(++count / (float)totalItemCount);
+                            if (percent != prevPercent)
+                            {
+                                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Progress, percent); }));
+                                prevPercent = percent;
+                            }
+
+                            if (item.Name.ToUpper().Contains(searchStr))
+                            {
+                                results.Add(item);
+                            }
+
+                            if (_resultFlushStopwatch.ElapsedMilliseconds > RESULT_FLUSH_TIMEOUT)
+                            {
+                                // Taking too long, flush what we got alredy.
+                                List<ProjectItem> toSend = new List<ProjectItem>(results);
+                                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, percent, toSend); }));
+                                results.Clear();
+                                _resultFlushStopwatch.Restart();
+                            }
+                        }
+                    }
+                }
+
+                if (!_cancelSearch)
+                {
+                    if (results.Count > 0)
+                        _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, 100, results); }));
+                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Finished, 100, null); }));
+                }
+                _resultFlushStopwatch = null;
+            }
+        }
+
+        private void SearchCodeElements(string searchStr)
+        {
+            if (_dte != null)
+            {
+                // Search for functions in currently open code editor.
+                List<CodeItem> results = new List<CodeItem>();
+
+                if (_dte.ActiveDocument != null &&
+                    _dte.ActiveDocument.ProjectItem.FileCodeModel != null)
+                {
+                    _resultFlushStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.HeaderData, -1, null, CodeItem.HeaderDataList); }));
+                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Progress, -1); }));
+
+                    _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
+                    _currentSearchString = searchStr;
+                    GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
+
+                    if (!_cancelSearch)
+                    {
+                        if (results.Count > 0)
+                            _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, 100, results); }));
+                        _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Finished, 100); }));
+                    }
+                    _resultFlushStopwatch = null;
+                }
+            }
         }
 
         private void GetCodeElements(List<CodeItem> results, CodeElements codeElements)
@@ -633,6 +794,15 @@ namespace QtCreatorPack
                         GetCodeElements(results, intf.Children);
                     }
                 }
+
+                if (_resultFlushStopwatch.ElapsedMilliseconds > RESULT_FLUSH_TIMEOUT)
+                {
+                    // Taking too long, flush what we got alredy.
+                    List<CodeItem> toSend = new List<CodeItem>(results);
+                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, -1, toSend); }));
+                    results.Clear();
+                    _resultFlushStopwatch.Restart();
+                }
             }
         }
 
@@ -669,107 +839,6 @@ namespace QtCreatorPack
                     }
                     catch
                     { }
-                }
-            }
-        }
-
-        private void WorkerThreadFunc()
-        {
-            while (true)
-            {
-                Message message;
-                lock (_workerThreadSync)
-                {
-                    while (_searchMessage == null && _messageQueue.Count == 0)
-                        Monitor.Wait(_workerThreadSync);
-
-                    if (_messageQueue.Count > 0)
-                    {
-                        message = _messageQueue.Dequeue();
-                    }
-                    else // search message must be set
-                    {
-                        message = _searchMessage;
-                        _searchMessage = null;
-                        _cancelSearch = false;
-                    }
-                }
-
-                if (message.Type == MessageType.SearchString)
-                {
-                    string searchStr = message.Text.TrimStart();
-                    Regex regex = new Regex(@"\.\s+(.*)");
-                    Match match = regex.Match(searchStr);
-                    if (match.Success)
-                    {
-                        if (_dte != null)
-                        {
-                            // Search for functions in currently open code editor.
-                            searchStr = match.Groups[1].Value.ToUpper();
-                            List<CodeItem> results = new List<CodeItem>();
-
-                            if (_dte.ActiveDocument != null &&
-                                _dte.ActiveDocument.ProjectItem.FileCodeModel != null)
-                            {
-                                _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
-                                _currentSearchString = searchStr;
-                                GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
-                            }
-
-                            // Raise search finished event in user's thread.
-                            if (!_cancelSearch)
-                                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
-                        }
-                    }
-                    else
-                    {
-                        // Search for files in solution.
-                        searchStr = searchStr.ToUpper();
-                        List<ProjectItem> results = new List<ProjectItem>();
-                        foreach (Project prj in _projectList)
-                        {
-                            if (_cancelSearch)
-                                break;
-
-                            lock (prj.Items)
-                            {
-                                foreach (ProjectItem item in prj.Items)
-                                {
-                                    if (_cancelSearch)
-                                        break;
-
-                                    if (item.Name.ToUpper().Contains(searchStr))
-                                    {
-                                        results.Add(item);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Raise search finished event in user's thread.
-                        if (!_cancelSearch)
-                            _dispatcher.BeginInvoke(new Action(() => { RaiseSearchFinishedEvent(results); }));
-                    }
-                }
-                else if (message.Type == MessageType.ProjectLoaded)
-                {
-                    Project project = new Project(message.Hierarchy);
-                    _projectList.Add(project);
-                }
-                else if (message.Type == MessageType.ProjectUnloaded)
-                {
-                    _projectList.RemoveAll((Project prj) => {
-                        if (prj.Hierarchy == message.Hierarchy)
-                        {
-                            prj.StopListeningEvents();
-                            return true;
-                        }
-                        return false;
-                    });
-                }
-                else if (message.Type == MessageType.Stop)
-                {
-                    break;
                 }
             }
         }

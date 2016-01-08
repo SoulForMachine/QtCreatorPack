@@ -14,7 +14,7 @@
         <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" DockPanel.Dock="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
                  Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
                  BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
-                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="0,3,195,0" PreviewKeyDown="textBox_PreviewKeyDown" MaxWidth="400" MinWidth="400" HorizontalAlignment="Left"/>
+                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="0,3,195,0" PreviewKeyDown="textBox_PreviewKeyDown" MaxWidth="400" MinWidth="400" HorizontalAlignment="Left" KeyDown="textBox_KeyDown"/>
 
         <ListView x:Name="listView" Margin="0,25,0,0" KeyDown="listView_KeyDown" MouseDoubleClick="listView_MouseDoubleClick" SelectionMode="Single"
                   Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
@@ -161,8 +161,7 @@
 
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}"/>
-                    <GridViewColumn Header="Path" DisplayMemberBinding="{Binding Path}"/>
+                    
                 </GridView>
             </ListView.View>
         </ListView>
@@ -198,5 +197,6 @@
                 </Style>
             </Button.Resources>
         </Button>
+        <ProgressBar x:Name="progressBar" HorizontalAlignment="Left" Height="10" Margin="430,10,0,0" VerticalAlignment="Top" Width="100" IsTabStop="False"/>
     </Grid>
 </UserControl>
