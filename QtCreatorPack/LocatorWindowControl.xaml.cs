@@ -56,13 +56,15 @@ namespace QtCreatorPack
 
             if (_locator != null && textBox.Text.Length > 0)
             {
-                progressBar.Visibility = Visibility.Visible;
                 _locator.SearchString(textBox.Text);
             }
         }
 
         private void _locator_SearchResultEvent(object sender, Locator.SearchResultEventArgs args)
         {
+            if (textBox.Text.Length == 0)   //! fix it
+                return;
+
             if (args.Type == Locator.SearchResultEventArgs.ResultType.Data)
             {
                 foreach (Locator.Item item in args.Items)
@@ -78,21 +80,47 @@ namespace QtCreatorPack
             }
             else if (args.Type == Locator.SearchResultEventArgs.ResultType.HeaderData)
             {
+                progressBar.Visibility = Visibility.Visible;
                 listView.Items.Clear();
                 GridView gridView = listView.View as GridView;
                 gridView.Columns.Clear();
+                bool first = true;
 
                 foreach (Locator.Item.HeaderData headerData in args.HeaderData)
                 {
                     GridViewColumn column = new GridViewColumn();
                     column.Header = headerData.Title;
-                    column.DisplayMemberBinding = new Binding(headerData.BoundPropertyName);
                     column.Width = headerData.Width;
+                    if (first)
+                    {
+                        FrameworkElementFactory stackPanelFactory = new FrameworkElementFactory(typeof(StackPanel));
+                        stackPanelFactory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+
+                        FrameworkElementFactory image = new FrameworkElementFactory(typeof(Image));
+                        image.SetBinding(Image.SourceProperty, new Binding("Image"));
+                        stackPanelFactory.AppendChild(image);
+
+                        FrameworkElementFactory title = new FrameworkElementFactory(typeof(TextBlock));
+                        title.SetBinding(TextBlock.TextProperty, new Binding(headerData.BoundPropertyName));
+                        title.SetValue(TextBlock.PaddingProperty, new Thickness(20, 0, 0, 0));
+                        stackPanelFactory.AppendChild(title);
+
+                        DataTemplate dataTemplate = new DataTemplate();
+                        dataTemplate.VisualTree = stackPanelFactory;
+                        column.CellTemplate = dataTemplate;
+                        first = false;
+                    }
+                    else
+                    {
+                        column.DisplayMemberBinding = new Binding(headerData.BoundPropertyName);
+                    }
                     gridView.Columns.Add(column);
                 }
             }
-            else if (args.Type == Locator.SearchResultEventArgs.ResultType.Finished)
+            else if (args.Type == Locator.SearchResultEventArgs.ResultType.Finished ||
+                     args.Type == Locator.SearchResultEventArgs.ResultType.Error)
             {
+                progressBar.IsIndeterminate = false;
                 progressBar.Visibility = Visibility.Hidden;
             }
         }

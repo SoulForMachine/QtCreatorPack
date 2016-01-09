@@ -14,7 +14,7 @@
         <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" DockPanel.Dock="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
                  Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
                  BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
-                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="0,3,195,0" PreviewKeyDown="textBox_PreviewKeyDown" MaxWidth="400" MinWidth="400" HorizontalAlignment="Left" KeyDown="textBox_KeyDown"/>
+                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="3,3,195,0" PreviewKeyDown="textBox_PreviewKeyDown" MaxWidth="400" MinWidth="400" HorizontalAlignment="Left" KeyDown="textBox_KeyDown"/>
 
         <ListView x:Name="listView" Margin="0,25,0,0" KeyDown="listView_KeyDown" MouseDoubleClick="listView_MouseDoubleClick" SelectionMode="Single"
                   Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
@@ -161,11 +161,20 @@
 
             <ListView.View>
                 <GridView>
-                    
+                    <!--<GridViewColumn Header="Common" >
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" >
+                                    <Image Source="{Binding ImgSrc}" Width="16" Height="16" Stretch="Fill"/>
+                                    <TextBlock Padding="5,0,0,0"  Text="{Binding Name}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>-->
                 </GridView>
             </ListView.View>
         </ListView>
-        <Button x:Name="buttonClear" Content="" HorizontalAlignment="Left" Margin="405,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear" BorderThickness="0" Height="20" Click="buttonClear_Click" >
+        <Button x:Name="buttonClear" Content="" HorizontalAlignment="Left" Margin="408,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear" BorderThickness="0" Height="20" Click="buttonClear_Click" >
             <Button.Resources>
                 <Style TargetType="Button">
                     <Setter Property="Template">
@@ -197,6 +206,6 @@
                 </Style>
             </Button.Resources>
         </Button>
-        <ProgressBar x:Name="progressBar" HorizontalAlignment="Left" Height="10" Margin="430,10,0,0" VerticalAlignment="Top" Width="100" IsTabStop="False"/>
+        <ProgressBar x:Name="progressBar" HorizontalAlignment="Left" Height="10" Margin="433,8,0,0" VerticalAlignment="Top" Width="100" IsTabStop="False"/>
     </Grid>
 </UserControl>

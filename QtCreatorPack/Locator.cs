@@ -8,6 +8,9 @@ using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.Shell;
 using EnvDTE;
 using Microsoft.VisualStudio.VCCodeModel;
+using System.Windows.Media.Imaging;
+using System.Windows.Media;
+using System.IO;
 
 namespace QtCreatorPack
 {
@@ -51,6 +54,7 @@ namespace QtCreatorPack
             public EnvDTE.ProjectItem Item { get; set; }
             public string Name { get; set; }
             public string Path { get; set; }    // Project relative path.
+            public ImageSource Image { get; set; }
         }
 
         public class CodeItem : Item
@@ -96,6 +100,7 @@ namespace QtCreatorPack
             public string Name { get; set; }
             public string FQName { get; set; }
             public string Comment { get; set; }
+            public ImageSource Image { get; set; }
         }
 
         public class SearchResultEventArgs
@@ -105,6 +110,7 @@ namespace QtCreatorPack
                 HeaderData,
                 Data,
                 Progress,
+                Error,
                 Finished
             }
 
@@ -319,6 +325,13 @@ namespace QtCreatorPack
             }
         }
 
+        private const int CodeIcon_Struct = 0;
+        private const int CodeIcon_Class = 1;
+        private const int CodeIcon_Union = 2;
+        private const int CodeIcon_Interface = 3;
+        private const int CodeIcon_Enum = 4;
+        private const int CodeIcon_Function = 5;
+
         private const int RESULT_FLUSH_TIMEOUT = 300;   // milliseconds
 
         private volatile bool _cancelSearch = false;
@@ -332,17 +345,39 @@ namespace QtCreatorPack
         private string _currentSourceFilePath;
         private string _currentSearchString;
         private System.Diagnostics.Stopwatch _resultFlushStopwatch;
+        public List<BitmapSource> _codeIconList = new List<BitmapSource>();
 
         public Locator()
         {
             _dte = Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
             _dispatcher = Dispatcher.FromThread(System.Threading.Thread.CurrentThread);
             _workerThread = new System.Threading.Thread(WorkerThreadFunc);
+
+            // Load images from resource file.
+            string[] imageUris = new string[]
+            {
+                @"Resources/Structure.png",
+                @"Resources/Class.png",
+                @"Resources/Union.png",
+                @"Resources/Interface.png",
+                @"Resources/Enum.png",
+                @"Resources/Method.png",
+            };
+
+            foreach (string uri in imageUris)
+            {
+                var sFile = new FileStream(uri, FileMode.Open, FileAccess.Read);
+                BitmapImage bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.StreamSource = sFile;
+                bmp.EndInit();
+                _codeIconList.Add(bmp);
+            }
         }
 
         public void SearchString(string text)
         {
-            if (_workerThread.IsAlive && _projectList.Count > 0)
+            if (_workerThread.IsAlive)
             {
                 lock (_workerThreadSync)
                 {
@@ -457,7 +492,9 @@ namespace QtCreatorPack
 
         #endregion
 
-        protected virtual void RaiseSearchResultEvent(SearchResultEventArgs.ResultType type, int percent, IEnumerable<Item> items = null, IEnumerable<Item.HeaderData> headerData = null)
+        protected virtual void RaiseSearchResultEvent(
+            SearchResultEventArgs.ResultType type, int percent,
+            IEnumerable<Item> items = null, IEnumerable<Item.HeaderData> headerData = null)
         {
             if (SearchResultEvent != null)
                 SearchResultEvent(this, new SearchResultEventArgs(type, percent, items, headerData));
@@ -553,7 +590,7 @@ namespace QtCreatorPack
         {
             if (_projectList.Count > 0)
             {
-                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.HeaderData, 0, null, ProjectItem.HeaderDataList); }));
+                RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, 0, null, ProjectItem.HeaderDataList);
 
                 searchStr = searchStr.ToUpper();
                 List<ProjectItem> results = new List<ProjectItem>();
@@ -580,12 +617,13 @@ namespace QtCreatorPack
                             int percent = (int)Math.Round(++count / (float)totalItemCount);
                             if (percent != prevPercent)
                             {
-                                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Progress, percent); }));
+                                RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Progress, percent);
                                 prevPercent = percent;
                             }
 
                             if (item.Name.ToUpper().Contains(searchStr))
                             {
+                                item.Image = _codeIconList[0];
                                 results.Add(item);
                             }
 
@@ -593,7 +631,7 @@ namespace QtCreatorPack
                             {
                                 // Taking too long, flush what we got alredy.
                                 List<ProjectItem> toSend = new List<ProjectItem>(results);
-                                _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, percent, toSend); }));
+                                RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, percent, toSend);
                                 results.Clear();
                                 _resultFlushStopwatch.Restart();
                             }
@@ -604,10 +642,14 @@ namespace QtCreatorPack
                 if (!_cancelSearch)
                 {
                     if (results.Count > 0)
-                        _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, 100, results); }));
-                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Finished, 100, null); }));
+                        RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, 100, results);
+                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Finished, 100);
                 }
                 _resultFlushStopwatch = null;
+            }
+            else
+            {
+                RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Error, 0);
             }
         }
 
@@ -622,8 +664,8 @@ namespace QtCreatorPack
                     _dte.ActiveDocument.ProjectItem.FileCodeModel != null)
                 {
                     _resultFlushStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.HeaderData, -1, null, CodeItem.HeaderDataList); }));
-                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Progress, -1); }));
+                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, -1, null, CodeItem.HeaderDataList);
+                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Progress, -1);
 
                     _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
                     _currentSearchString = searchStr;
@@ -632,11 +674,19 @@ namespace QtCreatorPack
                     if (!_cancelSearch)
                     {
                         if (results.Count > 0)
-                            _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, 100, results); }));
-                        _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Finished, 100); }));
+                            RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, 100, results);
+                        RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Finished, 100);
                     }
                     _resultFlushStopwatch = null;
                 }
+                else
+                {
+                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Error, 0);
+                }
+            }
+            else
+            {
+                RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Error, 0);
             }
         }
 
@@ -675,6 +725,7 @@ namespace QtCreatorPack
                                     item.Name = str.Name;
                                     item.FQName = str.FullName;
                                     item.Comment = str.Comment;
+                                    item.Image = _codeIconList[CodeIcon_Struct];
                                     results.Add(item);
                                 }
 
@@ -705,6 +756,7 @@ namespace QtCreatorPack
                                     item.Name = cls.Name;
                                     item.FQName = cls.FullName;
                                     item.Comment = cls.Comment;
+                                    item.Image = _codeIconList[CodeIcon_Class];
                                     results.Add(item);
                                 }
 
@@ -729,6 +781,7 @@ namespace QtCreatorPack
                             item.Name = f.get_Prototype((int)vsCMPrototype.vsCMPrototypeUniqueSignature);
                             item.FQName = f.FullName;
                             item.Comment = f.Comment;
+                            item.Image = _codeIconList[CodeIcon_Function];
                             GetCppInfo(ce, item);
                             results.Add(item);
                         }
@@ -751,6 +804,7 @@ namespace QtCreatorPack
                                 item.Name = enm.Name;
                                 item.FQName = enm.FullName;
                                 item.Comment = enm.Comment;
+                                item.Image = _codeIconList[CodeIcon_Enum];
                                 results.Add(item);
                             }
                         }
@@ -771,6 +825,7 @@ namespace QtCreatorPack
                                 item.Name = vcUn.Name;
                                 item.FQName = vcUn.FullName;
                                 item.Comment = vcUn.Comment;
+                                item.Image = _codeIconList[CodeIcon_Union];
                                 results.Add(item);
                             }
                         }
@@ -788,6 +843,7 @@ namespace QtCreatorPack
                             item.Name = intf.Name;
                             item.FQName = intf.FullName;
                             item.Comment = intf.Comment;
+                            item.Image = _codeIconList[CodeIcon_Interface];
                             results.Add(item);
                         }
 
@@ -799,7 +855,7 @@ namespace QtCreatorPack
                 {
                     // Taking too long, flush what we got alredy.
                     List<CodeItem> toSend = new List<CodeItem>(results);
-                    _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(SearchResultEventArgs.ResultType.Data, -1, toSend); }));
+                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, -1, toSend);
                     results.Clear();
                     _resultFlushStopwatch.Restart();
                 }
@@ -841,6 +897,13 @@ namespace QtCreatorPack
                     { }
                 }
             }
+        }
+
+        private void RaiseSearchResultEventInUserThread(
+            SearchResultEventArgs.ResultType type, int percent,
+            IEnumerable<Item> items = null, IEnumerable<Item.HeaderData> headerData = null)
+        {
+            _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(type, percent, items, headerData); }));
         }
     }
 }
