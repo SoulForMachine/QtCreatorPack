@@ -111,6 +111,7 @@ namespace QtCreatorPack
                 Data,
                 Progress,
                 Error,
+                Canceled,
                 Finished
             }
 
@@ -325,6 +326,13 @@ namespace QtCreatorPack
             }
         }
 
+        private enum WorkerThreadState
+        {
+            NotStarted,
+            Idle,
+            Working
+        }
+
         private const int CodeIcon_Struct = 0;
         private const int CodeIcon_Class = 1;
         private const int CodeIcon_Union = 2;
@@ -335,9 +343,11 @@ namespace QtCreatorPack
         private const int RESULT_FLUSH_TIMEOUT = 300;   // milliseconds
 
         private volatile bool _cancelSearch = false;
+        private volatile WorkerThreadState _workerState = WorkerThreadState.NotStarted;
         private List<Project> _projectList = new List<Project>();
         private System.Threading.Thread _workerThread;
         private readonly object _workerThreadSync = new object();
+        private readonly object _workerThreadIdle = new object();
         private Message _searchMessage = null;  // This one is processed after the queue is empty.
         private Queue<Message> _messageQueue = new Queue<Message>();
         private Dispatcher _dispatcher;         // Dispatcher for the thread that created the Locator.
@@ -388,10 +398,33 @@ namespace QtCreatorPack
             }
         }
 
+        public void CancelSearch(bool wait = false)
+        {
+            if (_workerThread.IsAlive)
+            {
+                lock (_workerThreadSync)
+                {
+                    _cancelSearch = true;
+
+                    if (wait)
+                    {
+                        lock (_workerThreadIdle)
+                        {
+                            while (_workerState == WorkerThreadState.Working)
+                                Monitor.Wait(_workerThreadIdle);
+                        }
+                    }
+                }
+            }
+        }
+
         public void StartWorkerThread()
         {
             if (!_workerThread.IsAlive)
+            {
+                _workerState = WorkerThreadState.Idle;
                 _workerThread.Start();
+            }
         }
 
         public void StopWorkerThread()
@@ -406,6 +439,7 @@ namespace QtCreatorPack
                 }
 
                 _workerThread.Join();
+                _workerState = WorkerThreadState.NotStarted;
             }
         }
 
@@ -534,7 +568,16 @@ namespace QtCreatorPack
                 lock (_workerThreadSync)
                 {
                     while (_searchMessage == null && _messageQueue.Count == 0)
+                    {
+                        lock (_workerThreadIdle)
+                        {
+                            _workerState = WorkerThreadState.Idle;
+                            Monitor.Pulse(_workerThreadIdle);
+                        }
                         Monitor.Wait(_workerThreadSync);
+                    }
+
+                    _workerState = WorkerThreadState.Working;
 
                     if (_messageQueue.Count > 0)
                     {
@@ -581,6 +624,11 @@ namespace QtCreatorPack
                 }
                 else if (message.Type == MessageType.Stop)
                 {
+                    lock (_workerThreadIdle)
+                    {
+                        _workerState = WorkerThreadState.Idle;
+                        Monitor.Pulse(_workerThreadIdle);
+                    }
                     break;
                 }
             }
@@ -639,7 +687,11 @@ namespace QtCreatorPack
                     }
                 }
 
-                if (!_cancelSearch)
+                if (_cancelSearch)
+                {
+                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Canceled, 0);
+                }
+                else
                 {
                     if (results.Count > 0)
                         RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, 100, results);
@@ -671,7 +723,11 @@ namespace QtCreatorPack
                     _currentSearchString = searchStr;
                     GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
 
-                    if (!_cancelSearch)
+                    if (_cancelSearch)
+                    {
+                        RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Canceled, 0);
+                    }
+                    else
                     {
                         if (results.Count > 0)
                             RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, 100, results);

@@ -6,14 +6,9 @@
 
 namespace QtCreatorPack
 {
-    using System;
-    using System.Diagnostics.CodeAnalysis;
     using System.Windows;
     using System.Windows.Controls;
     using System.Windows.Input;
-    using Microsoft.VisualStudio.Shell;
-    using Microsoft.VisualStudio.Shell.Interop;
-    using System.Collections.Generic;
     using System.Windows.Data;
 
     /// <summary>
@@ -21,7 +16,16 @@ namespace QtCreatorPack
     /// </summary>
     public partial class LocatorWindowControl : UserControl
     {
+        private enum LocatorState
+        {
+            Uninitialized,
+            Ready,
+            Searching
+        }
+
         private Locator _locator;
+        private LocatorState _locatorState;
+        private GridView _gridView;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LocatorWindowControl"/> class.
@@ -30,12 +34,31 @@ namespace QtCreatorPack
         {
             this.InitializeComponent();
             progressBar.Visibility = Visibility.Hidden;
+            _locatorState = LocatorState.Uninitialized;
+            _gridView = listView.View as GridView;
         }
 
         internal void SetLocator(Locator locator)
         {
+            if (_locator != null)
+            {
+                _locator.SearchResultEvent -= _locator_SearchResultEvent;
+                if (_locatorState == LocatorState.Searching)
+                {
+                    _locator.CancelSearch(true);
+                    ResetResultList();
+                    ResetProgressBar();
+                }
+            }
+
             _locator = locator;
-            _locator.SearchResultEvent += _locator_SearchResultEvent;
+            if (_locator != null)
+            {
+                _locatorState = LocatorState.Ready;
+                _locator.SearchResultEvent += _locator_SearchResultEvent;
+            }
+            else
+                _locatorState = LocatorState.Uninitialized;
         }
 
         private bool CurrentItemActivated()
@@ -50,78 +73,98 @@ namespace QtCreatorPack
 
         private void StartNewSearch()
         {
-            listView.Items.Clear();
-            GridView gridView = listView.View as GridView;
-            gridView.Columns.Clear();
-
-            if (_locator != null && textBox.Text.Length > 0)
+            if (_locator != null)
             {
-                _locator.SearchString(textBox.Text);
+                if (textBox.Text.Length > 0)
+                {
+                    _locatorState = LocatorState.Searching;
+                    _locator.SearchString(textBox.Text);
+                }
+                else
+                {
+                    ResetResultList();
+                    ResetProgressBar();
+                    _locator.CancelSearch();
+                }
             }
+        }
+
+        private void ResetResultList()
+        {
+            listView.Items.Clear();
+            _gridView.Columns.Clear();
+        }
+
+        private void ResetProgressBar()
+        {
+            progressBar.IsIndeterminate = false;
+            progressBar.Visibility = Visibility.Hidden;
         }
 
         private void _locator_SearchResultEvent(object sender, Locator.SearchResultEventArgs args)
         {
-            if (textBox.Text.Length == 0)   //! fix it
-                return;
+            switch (args.Type)
+            {
+                case Locator.SearchResultEventArgs.ResultType.Data:
+                    foreach (Locator.Item item in args.Items)
+                        listView.Items.Add(item);
+                    break;
 
-            if (args.Type == Locator.SearchResultEventArgs.ResultType.Data)
-            {
-                foreach (Locator.Item item in args.Items)
-                    listView.Items.Add(item);
-            }
-            else if (args.Type == Locator.SearchResultEventArgs.ResultType.Progress)
-            {
-                // Update progress bar.
-                bool indeterminate = (args.Percent < 0);
-                if (progressBar.IsIndeterminate != indeterminate)
-                    progressBar.IsIndeterminate = indeterminate;
-                progressBar.Value = args.Percent;
-            }
-            else if (args.Type == Locator.SearchResultEventArgs.ResultType.HeaderData)
-            {
-                progressBar.Visibility = Visibility.Visible;
-                listView.Items.Clear();
-                GridView gridView = listView.View as GridView;
-                gridView.Columns.Clear();
-                bool first = true;
+                case Locator.SearchResultEventArgs.ResultType.Progress:
+                    // Update progress bar.
+                    bool indeterminate = (args.Percent < 0);
+                    if (progressBar.IsIndeterminate != indeterminate)
+                        progressBar.IsIndeterminate = indeterminate;
+                    progressBar.Value = args.Percent;
+                    break;
 
-                foreach (Locator.Item.HeaderData headerData in args.HeaderData)
-                {
-                    GridViewColumn column = new GridViewColumn();
-                    column.Header = headerData.Title;
-                    column.Width = headerData.Width;
-                    if (first)
+                case Locator.SearchResultEventArgs.ResultType.HeaderData:
+                    progressBar.Visibility = Visibility.Visible;
+                    ResetResultList();
+                    bool first = true;
+
+                    foreach (Locator.Item.HeaderData headerData in args.HeaderData)
                     {
-                        FrameworkElementFactory stackPanelFactory = new FrameworkElementFactory(typeof(StackPanel));
-                        stackPanelFactory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+                        GridViewColumn column = new GridViewColumn();
+                        column.Header = headerData.Title;
+                        column.Width = headerData.Width;
+                        if (first)
+                        {
+                            FrameworkElementFactory stackPanelFactory = new FrameworkElementFactory(typeof(StackPanel));
+                            stackPanelFactory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
 
-                        FrameworkElementFactory image = new FrameworkElementFactory(typeof(Image));
-                        image.SetBinding(Image.SourceProperty, new Binding("Image"));
-                        stackPanelFactory.AppendChild(image);
+                            FrameworkElementFactory image = new FrameworkElementFactory(typeof(Image));
+                            image.SetBinding(Image.SourceProperty, new Binding("Image"));
+                            stackPanelFactory.AppendChild(image);
 
-                        FrameworkElementFactory title = new FrameworkElementFactory(typeof(TextBlock));
-                        title.SetBinding(TextBlock.TextProperty, new Binding(headerData.BoundPropertyName));
-                        title.SetValue(TextBlock.PaddingProperty, new Thickness(20, 0, 0, 0));
-                        stackPanelFactory.AppendChild(title);
+                            FrameworkElementFactory title = new FrameworkElementFactory(typeof(TextBlock));
+                            title.SetBinding(TextBlock.TextProperty, new Binding(headerData.BoundPropertyName));
+                            title.SetValue(TextBlock.PaddingProperty, new Thickness(20, 0, 0, 0));
+                            stackPanelFactory.AppendChild(title);
 
-                        DataTemplate dataTemplate = new DataTemplate();
-                        dataTemplate.VisualTree = stackPanelFactory;
-                        column.CellTemplate = dataTemplate;
-                        first = false;
+                            DataTemplate dataTemplate = new DataTemplate();
+                            dataTemplate.VisualTree = stackPanelFactory;
+                            column.CellTemplate = dataTemplate;
+                            first = false;
+                        }
+                        else
+                        {
+                            column.DisplayMemberBinding = new Binding(headerData.BoundPropertyName);
+                        }
+                        _gridView.Columns.Add(column);
                     }
-                    else
-                    {
-                        column.DisplayMemberBinding = new Binding(headerData.BoundPropertyName);
-                    }
-                    gridView.Columns.Add(column);
-                }
-            }
-            else if (args.Type == Locator.SearchResultEventArgs.ResultType.Finished ||
-                     args.Type == Locator.SearchResultEventArgs.ResultType.Error)
-            {
-                progressBar.IsIndeterminate = false;
-                progressBar.Visibility = Visibility.Hidden;
+                    break;
+
+                case Locator.SearchResultEventArgs.ResultType.Canceled:
+                    ResetResultList();
+                    _locatorState = LocatorState.Ready;
+                    break;
+
+                case Locator.SearchResultEventArgs.ResultType.Finished:
+                case Locator.SearchResultEventArgs.ResultType.Error:
+                    ResetProgressBar();
+                    _locatorState = LocatorState.Ready;
+                    break;
             }
         }
 
