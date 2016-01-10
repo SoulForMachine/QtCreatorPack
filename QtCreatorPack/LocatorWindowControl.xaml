@@ -4,8 +4,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:vsui="clr-namespace:Microsoft.VisualStudio.Shell;assembly=Microsoft.VisualStudio.Shell.14.0"
-             Background="{DynamicResource VsBrush.Window}"
-             Foreground="{DynamicResource VsBrush.WindowText}"
+             Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBackgroundKey}}"
+             Foreground="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowTextKey}}"
              BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
              mc:Ignorable="d"
              d:DesignHeight="300" d:DesignWidth="600"
@@ -161,45 +161,36 @@
 
             <ListView.View>
                 <GridView>
-                    <!--<GridViewColumn Header="Common" >
-                        <GridViewColumn.CellTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" >
-                                    <Image Source="{Binding ImgSrc}" Width="16" Height="16" Stretch="Fill"/>
-                                    <TextBlock Padding="5,0,0,0"  Text="{Binding Name}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>-->
+
                 </GridView>
             </ListView.View>
         </ListView>
-        <Button x:Name="buttonClear" Content="" HorizontalAlignment="Left" Margin="408,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear" BorderThickness="0" Height="20" Click="buttonClear_Click" >
+        <Button x:Name="buttonClear" HorizontalAlignment="Left" Margin="408,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear" BorderThickness="0" Height="20" Click="buttonClear_Click" >
             <Button.Resources>
                 <Style TargetType="Button">
+                    <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsColors.ToolWindowBackgroundKey}}"/>
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="Button">
-                                <Border>
-                                    <Border.Style>
-                                        <Style TargetType="{x:Type Border}">
-                                            <Setter Property="Background">
-                                                <Setter.Value>
-                                                    <ImageBrush ImageSource="/QtCreatorPack;component/Resources/clear.png" Stretch="None"/>
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background">
-                                                        <Setter.Value>
-                                                            <ImageBrush ImageSource="/QtCreatorPack;component/Resources/clear.png" Stretch="None"/>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
+                                <Border Background="{TemplateBinding Background}">
+                                    <Image Source="/QtCreatorPack;component/Resources/clear.png" Stretch="None" />
                                 </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background">
+                                            <Setter.Value>
+                                                <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ButtonHighlightKey}}"/>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter Property="Background">
+                                            <Setter.Value>
+                                                <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ToolWindowButtonDownKey}}"/>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Setter.Value>
                     </Setter>
