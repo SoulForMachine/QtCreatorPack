@@ -78,6 +78,9 @@
     <Content Include="Resources\Class.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="Resources\DefaultProjectItem.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="Resources\Enum.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

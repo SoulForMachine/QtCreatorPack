@@ -11,6 +11,8 @@ using Microsoft.VisualStudio.VCCodeModel;
 using System.Windows.Media.Imaging;
 using System.Windows.Media;
 using System.IO;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace QtCreatorPack
 {
@@ -40,6 +42,7 @@ namespace QtCreatorPack
                 new HeaderData("Name", "Name", 600),
                 new HeaderData("Path", "Path", 800)
             };
+            private ImageSource _image;
 
             public static List<HeaderData> HeaderDataList
             {
@@ -186,7 +189,10 @@ namespace QtCreatorPack
             public string Name { get; private set; }
             public List<ProjectItem> Items { get; private set; }
 
+            public static Dispatcher Dispatcher;
+
             private uint _cookie;
+            private static Dictionary<IntPtr, ImageSource> _projectIconCache = new Dictionary<IntPtr, ImageSource>();
 
             public Project(IVsHierarchy hierarchy)
             {
@@ -223,6 +229,7 @@ namespace QtCreatorPack
                             item.Name = projectItem.Name;
                             item.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
                             item.Item = projectItem;
+                            item.Image = GetProjectItemImage(Hierarchy, itemidAdded);
                             lock (Items)
                             {
                                 Items.Add(item);
@@ -298,6 +305,7 @@ namespace QtCreatorPack
                             item.Name = projectItem.Name;
                             item.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
                             item.Item = projectItem;
+                            item.Image = GetProjectItemImage(hierarchy, itemId);
                             Items.Add(item);
                         }
                     }
@@ -323,6 +331,40 @@ namespace QtCreatorPack
                         }
                     }
                 }
+            }
+
+            private static ImageSource GetProjectItemImage(IVsHierarchy hierarchy, uint itemId)
+            {
+                bool destroy;
+                IntPtr hIcon = Utils.GetProjectItemIcon(hierarchy, itemId, out destroy);
+                if (hIcon != IntPtr.Zero)
+                {
+                    ImageSource image;
+                    if (_projectIconCache.TryGetValue(hIcon, out image))
+                        return image;
+
+                    image = Dispatcher.Invoke(new Func<ImageSource>(() => {
+                        return Utils.CreateImageSource(hIcon, destroy);
+                    }));
+                    if (image != null)
+                    {
+                        _projectIconCache.Add(hIcon, image);
+                        return image;
+                    }
+                }
+
+                // Get the default image.
+                ImageSource defaultImage = null;
+                if (!_projectIconCache.TryGetValue(IntPtr.Zero, out defaultImage))
+                {
+                    // Load and add default image to the cache.
+                    defaultImage = Dispatcher.Invoke(new Func<ImageSource>(() =>
+                    {
+                        return Utils.LoadImageFromResource(@"Resources/DefaultProjectItem.png");
+                    }));
+                    _projectIconCache.Add(IntPtr.Zero, defaultImage);
+                }
+                return defaultImage;
             }
         }
 
@@ -355,7 +397,7 @@ namespace QtCreatorPack
         private string _currentSourceFilePath;
         private string _currentSearchString;
         private System.Diagnostics.Stopwatch _resultFlushStopwatch;
-        public List<BitmapSource> _codeIconList = new List<BitmapSource>();
+        private List<BitmapSource> _codeIconList = new List<BitmapSource>();
 
         public Locator()
         {
@@ -376,13 +418,11 @@ namespace QtCreatorPack
 
             foreach (string uri in imageUris)
             {
-                var sFile = new FileStream(uri, FileMode.Open, FileAccess.Read);
-                BitmapImage bmp = new BitmapImage();
-                bmp.BeginInit();
-                bmp.StreamSource = sFile;
-                bmp.EndInit();
+                BitmapImage bmp = Utils.LoadImageFromResource(uri);
                 _codeIconList.Add(bmp);
             }
+
+            Project.Dispatcher = _dispatcher;
         }
 
         public void SearchString(string text)
@@ -671,7 +711,6 @@ namespace QtCreatorPack
 
                             if (item.Name.ToUpper().Contains(searchStr))
                             {
-                                item.Image = _codeIconList[0];
                                 results.Add(item);
                             }
 
