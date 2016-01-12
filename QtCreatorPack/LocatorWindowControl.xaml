@@ -8,15 +8,12 @@
              Foreground="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowTextKey}}"
              BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
              mc:Ignorable="d"
-             d:DesignHeight="300" d:DesignWidth="600"
-             x:Name="LocatorToolWindow">
+             x:Name="LocatorToolWindow"
+             d:DesignHeight="300"
+             d:DesignWidth="600">
     <Grid>
-        <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" DockPanel.Dock="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
-                 Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
-                 BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
-                 Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" Margin="3,3,195,0" PreviewKeyDown="textBox_PreviewKeyDown" MaxWidth="400" MinWidth="400" HorizontalAlignment="Left" KeyDown="textBox_KeyDown"/>
 
-        <ListView x:Name="listView" Margin="0,25,0,0" KeyDown="listView_KeyDown" MouseDoubleClick="listView_MouseDoubleClick" SelectionMode="Single"
+        <ListView x:Name="listView" Margin="0,26,0,0" KeyDown="listView_KeyDown" MouseDoubleClick="listView_MouseDoubleClick" SelectionMode="Single"
                   Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
                   BorderThickness="0"
                   ItemContainerStyle="{DynamicResource ContainerStyle}">
@@ -165,38 +162,55 @@
                 </GridView>
             </ListView.View>
         </ListView>
-        <Button x:Name="buttonClear" HorizontalAlignment="Left" Margin="408,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear" BorderThickness="0" Height="20" Click="buttonClear_Click" >
-            <Button.Resources>
-                <Style TargetType="Button">
-                    <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsColors.ToolWindowBackgroundKey}}"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="Button">
-                                <Border Background="{TemplateBinding Background}">
-                                    <Image Source="/QtCreatorPack;component/Resources/clear.png" Stretch="None" />
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background">
-                                            <Setter.Value>
-                                                <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ButtonHighlightKey}}"/>
-                                            </Setter.Value>
-                                        </Setter>
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter Property="Background">
-                                            <Setter.Value>
-                                                <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ToolWindowButtonDownKey}}"/>
-                                            </Setter.Value>
-                                        </Setter>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </Button.Resources>
-        </Button>
-        <ProgressBar x:Name="progressBar" HorizontalAlignment="Left" Height="10" Margin="433,8,0,0" VerticalAlignment="Top" Width="100" IsTabStop="False"/>
+        <Grid
+              Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}" Height="26" VerticalAlignment="Top" MaxHeight="26" MinHeight="26" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+
+            <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
+        		Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}"
+        		BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
+        		Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" PreviewKeyDown="textBox_PreviewKeyDown" HorizontalAlignment="Left" KeyDown="textBox_KeyDown" Margin="3,3,0,0" Height="20" Width="400"/>
+
+            <Button x:Name="buttonClear" HorizontalAlignment="Left" Margin="410,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear search" BorderThickness="0" Height="20" Click="buttonClear_Click" >
+                <Button.Resources>
+                    <Style TargetType="{x:Type Button}">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsColors.ToolWindowBackgroundKey}}"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="{x:Type Button}">
+                                    <Border Background="{TemplateBinding Background}">
+                                        <Image Source="/QtCreatorPack;component/Resources/clear.png" Stretch="Fill" Width="16" Height="16" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background">
+                                                <Setter.Value>
+                                                    <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ButtonHighlightKey}}"/>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter Property="Background">
+                                                <Setter.Value>
+                                                    <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ToolWindowButtonDownKey}}"/>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Button.Resources>
+            </Button>
+
+            <ProgressBar x:Name="progressBar" HorizontalAlignment="Left" Height="12" Margin="435,7,0,0" VerticalAlignment="Top" Width="100" IsTabStop="False"
+                         Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}"
+                         BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ActiveBorderKey}}"
+        	             Foreground="{DynamicResource {x:Static vsui:VsBrushes.HighlightKey}}" />
+
+            <Label x:Name="textStatus" Content="" HorizontalAlignment="Left" Margin="540,0,0,0" VerticalAlignment="Top"
+        		Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}"
+        		Foreground="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowTextKey}}" Height="25"/>
+        </Grid>
     </Grid>
 </UserControl>

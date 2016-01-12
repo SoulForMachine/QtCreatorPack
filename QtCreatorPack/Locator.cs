@@ -135,6 +135,28 @@ namespace QtCreatorPack
         public delegate void SearchResultEventHandler(object sender, SearchResultEventArgs args);
         public event SearchResultEventHandler SearchResultEvent;
 
+        public class ProjectProcessingEventArgs
+        {
+            public enum ProcessingType
+            {
+                Loading,
+                Unloading,
+                Finished
+            }
+
+            public ProjectProcessingEventArgs(ProcessingType type, string message)
+            {
+                Type = type;
+                Message = message;
+            }
+
+            public string Message { get; set; }
+            public ProcessingType Type { get; set; }
+        }
+
+        public delegate void ProjectProcessingEventHandler(object sender, ProjectProcessingEventArgs args);
+        public event ProjectProcessingEventHandler ProjectProcessingEvent;
+
         private enum MessageType
         {
             SearchString,
@@ -190,9 +212,9 @@ namespace QtCreatorPack
             public List<ProjectItem> Items { get; private set; }
 
             public static Dispatcher Dispatcher;
+            private static Dictionary<IntPtr, ImageSource> _projectIconCache = new Dictionary<IntPtr, ImageSource>();
 
             private uint _cookie;
-            private static Dictionary<IntPtr, ImageSource> _projectIconCache = new Dictionary<IntPtr, ImageSource>();
 
             public Project(IVsHierarchy hierarchy)
             {
@@ -360,7 +382,7 @@ namespace QtCreatorPack
                     // Load and add default image to the cache.
                     defaultImage = Dispatcher.Invoke(new Func<ImageSource>(() =>
                     {
-                        return Utils.LoadImageFromResource(@"Resources/DefaultProjectItem.png");
+                        return Utils.LoadImageFromResource(@"pack://application:,,,/QtCreatorPack;component/Resources/DefaultProjectItem.png");
                     }));
                     _projectIconCache.Add(IntPtr.Zero, defaultImage);
                 }
@@ -406,7 +428,7 @@ namespace QtCreatorPack
             _workerThread = new System.Threading.Thread(WorkerThreadFunc);
 
             // Load images from resource file.
-            string[] imageUris = new string[]
+            string[] imagePaths = new string[]
             {
                 @"Resources/Structure.png",
                 @"Resources/Class.png",
@@ -416,9 +438,9 @@ namespace QtCreatorPack
                 @"Resources/Method.png",
             };
 
-            foreach (string uri in imageUris)
+            foreach (string path in imagePaths)
             {
-                BitmapImage bmp = Utils.LoadImageFromResource(uri);
+                BitmapImage bmp = Utils.LoadImageFromResource("pack://application:,,,/QtCreatorPack;component/" + path);
                 _codeIconList.Add(bmp);
             }
 
@@ -574,6 +596,12 @@ namespace QtCreatorPack
                 SearchResultEvent(this, new SearchResultEventArgs(type, percent, items, headerData));
         }
 
+        protected virtual void RaiseProjectProcessingEvent(ProjectProcessingEventArgs.ProcessingType type, string message = "")
+        {
+            if (ProjectProcessingEvent != null)
+                ProjectProcessingEvent(this, new ProjectProcessingEventArgs(type, message));
+        }
+
         private void ProjectLoaded(IVsHierarchy hierarchy)
         {
             if (_workerThread.IsAlive)
@@ -648,11 +676,30 @@ namespace QtCreatorPack
                 }
                 else if (message.Type == MessageType.ProjectLoaded)
                 {
+                    object obj;
+                    string name;
+                    int result = message.Hierarchy.GetProperty(VSConstants.VSITEMID_ROOT, (int)__VSHPROPID.VSHPROPID_Name, out obj);
+                    if (result == VSConstants.S_OK)
+                        name = obj as string;
+                    else
+                        name = string.Empty;
+
+                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Loading, "Loading project " + name);
                     Project project = new Project(message.Hierarchy);
                     _projectList.Add(project);
+                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Finished);
                 }
                 else if (message.Type == MessageType.ProjectUnloaded)
                 {
+                    object obj;
+                    string name;
+                    int result = message.Hierarchy.GetProperty(VSConstants.VSITEMID_ROOT, (int)__VSHPROPID.VSHPROPID_Name, out obj);
+                    if (result == VSConstants.S_OK)
+                        name = obj as string;
+                    else
+                        name = string.Empty;
+
+                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Loading, "Unloading project " + name);
                     _projectList.RemoveAll((Project prj) => {
                         if (prj.Hierarchy == message.Hierarchy)
                         {
@@ -661,6 +708,7 @@ namespace QtCreatorPack
                         }
                         return false;
                     });
+                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Finished);
                 }
                 else if (message.Type == MessageType.Stop)
                 {
@@ -702,7 +750,7 @@ namespace QtCreatorPack
                             if (_cancelSearch)
                                 break;
 
-                            int percent = (int)Math.Round(++count / (float)totalItemCount);
+                            int percent = (int)Math.Round(++count / (float)totalItemCount * 100.0f);
                             if (percent != prevPercent)
                             {
                                 RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Progress, percent);
@@ -999,6 +1047,11 @@ namespace QtCreatorPack
             IEnumerable<Item> items = null, IEnumerable<Item.HeaderData> headerData = null)
         {
             _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(type, percent, items, headerData); }));
+        }
+
+        private void RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType type, string message = "")
+        {
+            _dispatcher.BeginInvoke(new Action(() => { RaiseProjectProcessingEvent(type, message); }));
         }
     }
 }

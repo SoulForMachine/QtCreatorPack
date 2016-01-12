@@ -170,11 +170,11 @@ namespace QtCreatorPack
 
         public static BitmapImage LoadImageFromResource(string uri)
         {
-            var sFile = new FileStream(uri, FileMode.Open, FileAccess.Read);
+            var stream = Application.GetResourceStream(new Uri(uri)).Stream;
             BitmapImage bmp = new BitmapImage();
             //bmp.CacheOption = BitmapCacheOption.OnLoad;
             bmp.BeginInit();
-            bmp.StreamSource = sFile;
+            bmp.StreamSource = stream;
             bmp.EndInit();
             return bmp;
         }

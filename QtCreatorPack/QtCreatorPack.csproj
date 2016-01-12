@@ -75,29 +75,29 @@
     <Resource Include="Resources\clear.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
-    <Content Include="Resources\Class.png">
+    <Resource Include="Resources\Class.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\DefaultProjectItem.png">
+    </Resource>
+    <Resource Include="Resources\DefaultProjectItem.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Enum.png">
+    </Resource>
+    <Resource Include="Resources\Enum.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Interface.png">
+    </Resource>
+    <Resource Include="Resources\Interface.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    </Resource>
     <Content Include="Resources\LocatorWindowCommand.png" />
     <Content Include="Resources\LocatorWindowPackage.ico" />
-    <Content Include="Resources\Method.png">
+    <Resource Include="Resources\Method.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Structure.png">
+    </Resource>
+    <Resource Include="Resources\Structure.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Union.png">
+    </Resource>
+    <Resource Include="Resources\Union.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    </Resource>
   </ItemGroup>
   <ItemGroup>
     <Page Include="LocatorWindowControl.xaml">

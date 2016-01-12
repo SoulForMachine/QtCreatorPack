@@ -43,6 +43,7 @@ namespace QtCreatorPack
             if (_locator != null)
             {
                 _locator.SearchResultEvent -= _locator_SearchResultEvent;
+                _locator.ProjectProcessingEvent -= _locator_ProjectProcessingEvent;
                 if (_locatorState == LocatorState.Searching)
                 {
                     _locator.CancelSearch(true);
@@ -56,6 +57,7 @@ namespace QtCreatorPack
             {
                 _locatorState = LocatorState.Ready;
                 _locator.SearchResultEvent += _locator_SearchResultEvent;
+                _locator.ProjectProcessingEvent += _locator_ProjectProcessingEvent;
             }
             else
                 _locatorState = LocatorState.Uninitialized;
@@ -164,6 +166,23 @@ namespace QtCreatorPack
                 case Locator.SearchResultEventArgs.ResultType.Error:
                     ResetProgressBar();
                     _locatorState = LocatorState.Ready;
+                    break;
+            }
+        }
+
+        private void _locator_ProjectProcessingEvent(object sender, Locator.ProjectProcessingEventArgs args)
+        {
+            switch (args.Type)
+            {
+                case Locator.ProjectProcessingEventArgs.ProcessingType.Loading:
+                case Locator.ProjectProcessingEventArgs.ProcessingType.Unloading:
+                    progressBar.IsIndeterminate = true;
+                    progressBar.Visibility = Visibility.Visible;
+                    textStatus.Content = args.Message;
+                    break;
+                case Locator.ProjectProcessingEventArgs.ProcessingType.Finished:
+                    ResetProgressBar();
+                    textStatus.Content = "";
                     break;
             }
         }
