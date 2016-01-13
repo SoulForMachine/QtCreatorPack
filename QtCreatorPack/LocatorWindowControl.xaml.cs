@@ -33,9 +33,11 @@ namespace QtCreatorPack
         public LocatorWindowControl()
         {
             this.InitializeComponent();
-            progressBar.Visibility = Visibility.Hidden;
+            //progressBar.Visibility = Visibility.Hidden;
             _locatorState = LocatorState.Uninitialized;
             _gridView = listView.View as GridView;
+            textStatus.Content = "milan davidovic";
+            progressBar.IsIndeterminate = true;
         }
 
         internal void SetLocator(Locator locator)

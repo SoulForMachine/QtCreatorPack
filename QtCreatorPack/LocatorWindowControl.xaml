@@ -58,6 +58,7 @@
                     <Setter Property="HorizontalContentAlignment" Value="Center" />
                     <Setter Property="VerticalContentAlignment" Value="Center" />
                     <Setter Property="Foreground" Value="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" />
+                    <Setter Property="Height" Value="16"/>
 
                     <Setter Property="Template">
                         <Setter.Value>
@@ -158,22 +159,26 @@
 
             <ListView.View>
                 <GridView>
-
+                    <GridViewColumn Header="fhdskjh" Width="300"></GridViewColumn>
+                    <GridViewColumn Header="fhdskjh" Width="300"></GridViewColumn>
                 </GridView>
             </ListView.View>
         </ListView>
         <Grid
-              Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}" Height="26" VerticalAlignment="Top" MaxHeight="26" MinHeight="26" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+              Background="{DynamicResource {x:Static vsui:VsBrushes.CommandBarToolBarBorderKey}}"
+              Height="26" VerticalAlignment="Top" MaxHeight="26" MinHeight="26" ScrollViewer.VerticalScrollBarVisibility="Disabled">
 
             <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
-        		Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}"
+        		Background="{DynamicResource {x:Static vsui:VsBrushes.WindowKey}}"
         		BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowBorderKey}}"
         		Foreground="{DynamicResource {x:Static vsui:VsBrushes.WindowTextKey}}" PreviewKeyDown="textBox_PreviewKeyDown" HorizontalAlignment="Left" KeyDown="textBox_KeyDown" Margin="3,3,0,0" Height="20" Width="400"/>
 
-            <Button x:Name="buttonClear" HorizontalAlignment="Left" Margin="410,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear search" BorderThickness="0" Height="20" Click="buttonClear_Click" >
+            <Button x:Name="buttonClear" HorizontalAlignment="Left" Margin="410,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear search" Height="20" Click="buttonClear_Click" >
                 <Button.Resources>
                     <Style TargetType="{x:Type Button}">
                         <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsColors.ToolWindowBackgroundKey}}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsui:VsColors.ToolWindowBackgroundKey}}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="{x:Type Button}">
@@ -182,18 +187,12 @@
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background">
-                                                <Setter.Value>
-                                                    <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ButtonHighlightKey}}"/>
-                                                </Setter.Value>
-                                            </Setter>
+                                            <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsBrushes.CommandBarHoverKey}}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsui:VsBrushes.CommandBarBorderKey}}"/>
                                         </Trigger>
                                         <Trigger Property="IsPressed" Value="True">
-                                            <Setter Property="Background">
-                                                <Setter.Value>
-                                                    <SolidColorBrush Color="{DynamicResource {x:Static vsui:VsColors.ToolWindowButtonDownKey}}"/>
-                                                </Setter.Value>
-                                            </Setter>
+                                            <Setter Property="Background" Value="{DynamicResource {x:Static vsui:VsBrushes.CommandBarMouseDownBackgroundMiddleKey}}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static vsui:VsBrushes.CommandBarBorderKey}}"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -204,13 +203,13 @@
             </Button>
 
             <ProgressBar x:Name="progressBar" HorizontalAlignment="Left" Height="12" Margin="435,7,0,0" VerticalAlignment="Top" Width="100" IsTabStop="False"
-                         Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}"
+                         Background="{DynamicResource {x:Static vsui:VsBrushes.CommandBarToolBarBorderKey}}"
                          BorderBrush="{DynamicResource {x:Static vsui:VsBrushes.ActiveBorderKey}}"
         	             Foreground="{DynamicResource {x:Static vsui:VsBrushes.HighlightKey}}" />
 
             <Label x:Name="textStatus" Content="" HorizontalAlignment="Left" Margin="540,0,0,0" VerticalAlignment="Top"
-        		Background="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowFloatingFrameKey}}"
-        		Foreground="{DynamicResource {x:Static vsui:VsBrushes.ToolWindowTextKey}}" Height="25"/>
+        		Background="Transparent"
+        		Foreground="{DynamicResource {x:Static vsui:VsBrushes.CommandBarTextActiveKey}}" Height="25"/>
         </Grid>
     </Grid>
 </UserControl>
