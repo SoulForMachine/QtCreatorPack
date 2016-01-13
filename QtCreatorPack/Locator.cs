@@ -13,6 +13,7 @@ using System.Windows.Media;
 using System.IO;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Diagnostics;
 
 namespace QtCreatorPack
 {
@@ -50,7 +51,14 @@ namespace QtCreatorPack
 
             public override void ExecuteAction()
             {
-                Item.Open(EnvDTE.Constants.vsViewKindPrimary).Activate();
+                try
+                {
+                    Item.Open(EnvDTE.Constants.vsViewKindPrimary).Activate();
+                }
+                catch(Exception ex)
+                {
+                    Debug.Print(ex.Message);
+                }
             }
 
             public EnvDTE.ProjectItem Item { get; set; }
@@ -74,25 +82,32 @@ namespace QtCreatorPack
 
             public override void ExecuteAction()
             {
-                if (ProjectItem != null)
+                try
                 {
-                    EnvDTE.Window window = ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
-                    if (window != null)
+                    if (ProjectItem != null)
                     {
-                        window.Activate();
-                        EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
-                        sel.MoveToAbsoluteOffset(ElementOffset, false);
+                        EnvDTE.Window window = ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
+                        if (window != null)
+                        {
+                            window.Activate();
+                            EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
+                            sel.MoveToAbsoluteOffset(ElementOffset, false);
+                        }
+                    }
+                    else
+                    {
+                        EnvDTE.Window window = CodeElement.ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
+                        if (window != null)
+                        {
+                            window.Activate();
+                            EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
+                            sel.MoveToPoint(CodeElement.StartPoint, false);
+                        }
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    EnvDTE.Window window = CodeElement.ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
-                    if (window != null)
-                    {
-                        window.Activate();
-                        EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
-                        sel.MoveToPoint(CodeElement.StartPoint, false);
-                    }
+                    Debug.Print(ex.Message);
                 }
             }
 
@@ -805,9 +820,16 @@ namespace QtCreatorPack
                     RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, -1, null, CodeItem.HeaderDataList);
                     RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Progress, -1);
 
-                    _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
-                    _currentSearchString = searchStr;
-                    GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
+                    try
+                    {
+                        _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
+                        _currentSearchString = searchStr;
+                        GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
+                    }
+                    catch(Exception ex)
+                    {
+                        Debug.Print(ex.Message);
+                    }
 
                     if (_cancelSearch)
                     {
@@ -842,7 +864,7 @@ namespace QtCreatorPack
                 if (_cancelSearch)
                     return;
 
-                bool match = _currentSearchString.Length == 0 || ce.Name.ToUpper().Contains(_currentSearchString);
+                bool emptySearchStr = _currentSearchString.Length == 0;
 
                 if (ce.Kind == vsCMElement.vsCMElementNamespace)
                 {
@@ -860,7 +882,7 @@ namespace QtCreatorPack
                             // Skip forward declarations
                             if (vcStr.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
                             {
-                                if (match)
+                                if (emptySearchStr || str.Name.ToUpper().Contains(_currentSearchString))
                                 {
                                     CodeItem item = new CodeItem();
                                     item.CodeElement = ce;
@@ -891,7 +913,7 @@ namespace QtCreatorPack
                             // Skip forward declarations
                             if (vcCls.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
                             {
-                                if (match)
+                                if (emptySearchStr || cls.Name.ToUpper().Contains(_currentSearchString))
                                 {
                                     CodeItem item = new CodeItem();
                                     item.CodeElement = ce;
@@ -913,14 +935,14 @@ namespace QtCreatorPack
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementFunction)
                 {
-                    if (match)
+                    CodeFunction f = ce as CodeFunction;
+                    if (f != null)
                     {
-                        CodeFunction f = ce as CodeFunction;
-                        if (f != null)
+                        if (emptySearchStr || f.Name.ToUpper().Contains(_currentSearchString))
                         {
                             CodeItem item = new CodeItem();
                             item.CodeElement = ce;
-                            item.Name = f.get_Prototype((int)vsCMPrototype.vsCMPrototypeUniqueSignature);
+                            item.Name = f.get_Prototype((int)vsCMPrototype.vsCMPrototypeParamTypes);
                             item.FQName = f.FullName;
                             item.Comment = f.Comment;
                             item.Image = _codeIconList[CodeIcon_Function];
@@ -931,10 +953,10 @@ namespace QtCreatorPack
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementEnum)
                 {
-                    if (match)
+                    CodeEnum enm = ce as CodeEnum;
+                    if (enm != null)
                     {
-                        CodeEnum enm = ce as CodeEnum;
-                        if (enm != null)
+                        if (emptySearchStr || enm.Name.ToUpper().Contains(_currentSearchString))
                         {
                             VCCodeEnum vcEnm = enm as VCCodeEnum;
 
@@ -954,10 +976,10 @@ namespace QtCreatorPack
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementUnion)
                 {
-                    if (match)
+                    VCCodeUnion vcUn = ce as VCCodeUnion;
+                    if (vcUn != null)
                     {
-                        VCCodeUnion vcUn = ce as VCCodeUnion;
-                        if (vcUn != null)
+                        if (emptySearchStr || vcUn.Name.ToUpper().Contains(_currentSearchString))
                         {
                             // Skip forward declarations
                             if (vcUn.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
@@ -978,7 +1000,7 @@ namespace QtCreatorPack
                     CodeInterface intf = ce as CodeInterface;
                     if (intf != null)
                     {
-                        if (match)
+                        if (emptySearchStr || intf.Name.ToUpper().Contains(_currentSearchString))
                         {
                             CodeItem item = new CodeItem();
                             item.CodeElement = ce;
