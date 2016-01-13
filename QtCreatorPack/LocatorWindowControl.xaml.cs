@@ -33,11 +33,10 @@ namespace QtCreatorPack
         public LocatorWindowControl()
         {
             this.InitializeComponent();
-            //progressBar.Visibility = Visibility.Hidden;
+            progressBar.Visibility = Visibility.Hidden;
             _locatorState = LocatorState.Uninitialized;
             _gridView = listView.View as GridView;
-            textStatus.Content = "milan davidovic";
-            progressBar.IsIndeterminate = true;
+            listView.Visibility = Visibility.Hidden;
         }
 
         internal void SetLocator(Locator locator)
@@ -97,6 +96,7 @@ namespace QtCreatorPack
         {
             listView.Items.Clear();
             _gridView.Columns.Clear();
+            listView.Visibility = Visibility.Hidden;
         }
 
         private void ResetProgressBar()
@@ -125,6 +125,7 @@ namespace QtCreatorPack
                 case Locator.SearchResultEventArgs.ResultType.HeaderData:
                     progressBar.Visibility = Visibility.Visible;
                     ResetResultList();
+                    listView.Visibility = Visibility.Visible;
                     bool first = true;
 
                     foreach (Locator.Item.HeaderData headerData in args.HeaderData)

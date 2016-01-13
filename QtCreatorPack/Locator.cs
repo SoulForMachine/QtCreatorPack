@@ -42,7 +42,6 @@ namespace QtCreatorPack
                 new HeaderData("Name", "Name", 600),
                 new HeaderData("Path", "Path", 800)
             };
-            private ImageSource _image;
 
             public static List<HeaderData> HeaderDataList
             {

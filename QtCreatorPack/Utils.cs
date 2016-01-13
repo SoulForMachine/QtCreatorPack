@@ -100,8 +100,6 @@ namespace QtCreatorPack
 
         public static ImageSource CreateImageSource(IntPtr iconHandle, bool destroy)
         {
-            //Icon icon = Icon.FromHandle(iconHandle);
-            //IntPtr hBitmap = icon.ToBitmap().GetHbitmap();
             BitmapSource bitmapSource = Imaging.CreateBitmapSourceFromHIcon(iconHandle, Int32Rect.Empty,
                                                                             BitmapSizeOptions.FromEmptyOptions());
             if (destroy)
