@@ -178,5 +178,27 @@ namespace QtCreatorPack
         }
 
         #endregion
+
+        public static T FindVisualChild<T>(DependencyObject obj) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(obj); i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(obj, i);
+
+                if (child is T)
+                {
+                    return (T)child;
+                }
+                else
+                {
+                    child = FindVisualChild<T>(child);
+                    if (child != null)
+                    {
+                        return (T)child;
+                    }
+                }
+            }
+            return null;
+        }
     }
 }

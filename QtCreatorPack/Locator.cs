@@ -149,27 +149,30 @@ namespace QtCreatorPack
         public delegate void SearchResultEventHandler(object sender, SearchResultEventArgs args);
         public event SearchResultEventHandler SearchResultEvent;
 
-        public class ProjectProcessingEventArgs
+        public class SolutionEventArgs
         {
-            public enum ProcessingType
+            public enum EventType
             {
-                Loading,
-                Unloading,
-                Finished
+                SolutionLoading,
+                SolutionUnloading,
+                ProjectLoading,
+                ProjectUnloading,
+                ProjectFinishedLoading,
+                ProjectFinishedUnloading
             }
 
-            public ProjectProcessingEventArgs(ProcessingType type, string message)
+            public SolutionEventArgs(EventType type, string message)
             {
                 Type = type;
                 Message = message;
             }
 
             public string Message { get; set; }
-            public ProcessingType Type { get; set; }
+            public EventType Type { get; set; }
         }
 
-        public delegate void ProjectProcessingEventHandler(object sender, ProjectProcessingEventArgs args);
-        public event ProjectProcessingEventHandler ProjectProcessingEvent;
+        public delegate void SolutionEventHandler(object sender, SolutionEventArgs args);
+        public event SolutionEventHandler SolutionEvent;
 
         private enum MessageType
         {
@@ -566,6 +569,7 @@ namespace QtCreatorPack
 
         public int OnBeforeCloseSolution(object pUnkReserved)
         {
+            RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.SolutionUnloading);
             return VSConstants.S_OK;
         }
 
@@ -610,10 +614,10 @@ namespace QtCreatorPack
                 SearchResultEvent(this, new SearchResultEventArgs(type, percent, items, headerData));
         }
 
-        protected virtual void RaiseProjectProcessingEvent(ProjectProcessingEventArgs.ProcessingType type, string message = "")
+        protected virtual void RaiseSolutionEvent(SolutionEventArgs.EventType type, string message = "")
         {
-            if (ProjectProcessingEvent != null)
-                ProjectProcessingEvent(this, new ProjectProcessingEventArgs(type, message));
+            if (SolutionEvent != null)
+                SolutionEvent(this, new SolutionEventArgs(type, message));
         }
 
         private void ProjectLoaded(IVsHierarchy hierarchy)
@@ -698,10 +702,10 @@ namespace QtCreatorPack
                     else
                         name = string.Empty;
 
-                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Loading, "Loading project " + name);
+                    RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.ProjectLoading, "Loading project " + name);
                     Project project = new Project(message.Hierarchy);
                     _projectList.Add(project);
-                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Finished);
+                    RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.ProjectFinishedLoading);
                 }
                 else if (message.Type == MessageType.ProjectUnloaded)
                 {
@@ -713,7 +717,7 @@ namespace QtCreatorPack
                     else
                         name = string.Empty;
 
-                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Loading, "Unloading project " + name);
+                    RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.ProjectUnloading, "Unloading project " + name);
                     _projectList.RemoveAll((Project prj) => {
                         if (prj.Hierarchy == message.Hierarchy)
                         {
@@ -722,7 +726,7 @@ namespace QtCreatorPack
                         }
                         return false;
                     });
-                    RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType.Finished);
+                    RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.ProjectFinishedUnloading);
                 }
                 else if (message.Type == MessageType.Stop)
                 {
@@ -1070,9 +1074,9 @@ namespace QtCreatorPack
             _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(type, percent, items, headerData); }));
         }
 
-        private void RaiseProjectProcessingEventInUserThread(ProjectProcessingEventArgs.ProcessingType type, string message = "")
+        private void RaiseSolutionEventInUserThread(SolutionEventArgs.EventType type, string message = "")
         {
-            _dispatcher.BeginInvoke(new Action(() => { RaiseProjectProcessingEvent(type, message); }));
+            _dispatcher.BeginInvoke(new Action(() => { RaiseSolutionEvent(type, message); }));
         }
     }
 }

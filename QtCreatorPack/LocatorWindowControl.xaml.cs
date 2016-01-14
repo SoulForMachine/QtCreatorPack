@@ -10,6 +10,11 @@ namespace QtCreatorPack
     using System.Windows.Controls;
     using System.Windows.Input;
     using System.Windows.Data;
+    using System.Collections.Generic;
+    using System.Collections.ObjectModel;
+    using System.Collections.Specialized;
+    using System.Windows.Media;
+    using System;
 
     /// <summary>
     /// Interaction logic for LocatorWindowControl.
@@ -23,9 +28,35 @@ namespace QtCreatorPack
             Searching
         }
 
+        private enum ScrollDir
+        {
+            Down,
+            Up
+        }
+
+        // A list that implements INotifyCollectionChanged interface so that it can notify the bound ListView control.
+        // Item properties do not change so there is no need to implement INotifyPropertyChanged.
+        private class ObservableList<T> : List<T>, INotifyCollectionChanged
+        {
+            public event NotifyCollectionChangedEventHandler CollectionChanged;
+
+            public new void AddRange(IEnumerable<T> range)
+            {
+                base.AddRange(range);
+                CollectionChanged(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            }
+
+            public new void Clear()
+            {
+                base.Clear();
+                CollectionChanged(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            }
+        }
+
         private Locator _locator;
         private LocatorState _locatorState;
         private GridView _gridView;
+        private ObservableList<Locator.Item> _resultList = new ObservableList<Locator.Item>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LocatorWindowControl"/> class.
@@ -37,6 +68,7 @@ namespace QtCreatorPack
             _locatorState = LocatorState.Uninitialized;
             _gridView = listView.View as GridView;
             listView.Visibility = Visibility.Hidden;
+            listView.ItemsSource = _resultList;
         }
 
         internal void SetLocator(Locator locator)
@@ -44,7 +76,7 @@ namespace QtCreatorPack
             if (_locator != null)
             {
                 _locator.SearchResultEvent -= _locator_SearchResultEvent;
-                _locator.ProjectProcessingEvent -= _locator_ProjectProcessingEvent;
+                _locator.SolutionEvent -= _locator_SolutionEvent;
                 if (_locatorState == LocatorState.Searching)
                 {
                     _locator.CancelSearch(true);
@@ -58,7 +90,7 @@ namespace QtCreatorPack
             {
                 _locatorState = LocatorState.Ready;
                 _locator.SearchResultEvent += _locator_SearchResultEvent;
-                _locator.ProjectProcessingEvent += _locator_ProjectProcessingEvent;
+                _locator.SolutionEvent += _locator_SolutionEvent;
             }
             else
                 _locatorState = LocatorState.Uninitialized;
@@ -94,7 +126,7 @@ namespace QtCreatorPack
 
         private void ResetResultList()
         {
-            listView.Items.Clear();
+            _resultList.Clear();
             _gridView.Columns.Clear();
             listView.Visibility = Visibility.Hidden;
         }
@@ -110,8 +142,7 @@ namespace QtCreatorPack
             switch (args.Type)
             {
                 case Locator.SearchResultEventArgs.ResultType.Data:
-                    foreach (Locator.Item item in args.Items)
-                        listView.Items.Add(item);
+                    _resultList.AddRange(args.Items);
                     break;
 
                 case Locator.SearchResultEventArgs.ResultType.Progress:
@@ -135,6 +166,7 @@ namespace QtCreatorPack
                         column.Width = headerData.Width;
                         if (first)
                         {
+                            // The first column cell has an icon next to the text block.
                             FrameworkElementFactory stackPanelFactory = new FrameworkElementFactory(typeof(StackPanel));
                             stackPanelFactory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
 
@@ -173,19 +205,23 @@ namespace QtCreatorPack
             }
         }
 
-        private void _locator_ProjectProcessingEvent(object sender, Locator.ProjectProcessingEventArgs args)
+        private void _locator_SolutionEvent(object sender, Locator.SolutionEventArgs args)
         {
             switch (args.Type)
             {
-                case Locator.ProjectProcessingEventArgs.ProcessingType.Loading:
-                case Locator.ProjectProcessingEventArgs.ProcessingType.Unloading:
+                case Locator.SolutionEventArgs.EventType.ProjectLoading:
+                case Locator.SolutionEventArgs.EventType.ProjectUnloading:
                     progressBar.IsIndeterminate = true;
                     progressBar.Visibility = Visibility.Visible;
                     textStatus.Content = args.Message;
                     break;
-                case Locator.ProjectProcessingEventArgs.ProcessingType.Finished:
+                case Locator.SolutionEventArgs.EventType.ProjectFinishedLoading:
+                case Locator.SolutionEventArgs.EventType.ProjectFinishedUnloading:
                     ResetProgressBar();
                     textStatus.Content = "";
+                    break;
+                case Locator.SolutionEventArgs.EventType.SolutionUnloading:
+                    textBox.Clear();    // Will trigger TextChanged event and reset everything.
                     break;
             }
         }
@@ -202,11 +238,16 @@ namespace QtCreatorPack
                 case Key.Down:
                     if (listView.SelectedIndex == -1)
                     {
-                        listView.SelectedIndex = 0;
+                        if (_resultList.Count > 0)
+                        {
+                            listView.SelectedIndex = 0;
+                            listView.ScrollIntoView(listView.SelectedItem);
+                        }
                     }
                     else if (listView.SelectedIndex < listView.Items.Count - 1)
                     {
                         ++listView.SelectedIndex;
+                        listView.ScrollIntoView(listView.SelectedItem);
                     }
                     e.Handled = true;
                     break;
@@ -215,14 +256,67 @@ namespace QtCreatorPack
                     if (listView.SelectedIndex > 0)
                     {
                         --listView.SelectedIndex;
+                        listView.ScrollIntoView(listView.SelectedItem);
                     }
                     e.Handled = true;
+                    break;
+
+                case Key.PageDown:
+                    ScrollListViewPage(ScrollDir.Down);
+                    e.Handled = true;
+                    break;
+
+                case Key.PageUp:
+                    ScrollListViewPage(ScrollDir.Up);
+                    e.Handled = true;
+                    break;
+
+                case Key.Home:
+                    if (Keyboard.IsKeyDown(Key.LeftCtrl) && _resultList.Count > 0)
+                    {
+                        listView.ScrollIntoView(_resultList[0]);
+                        listView.SelectedIndex = 0;
+                        e.Handled = true;
+                    }
+                    break;
+
+                case Key.End:
+                    if (Keyboard.IsKeyDown(Key.LeftCtrl) && _resultList.Count > 0)
+                    {
+                        listView.ScrollIntoView(_resultList[_resultList.Count - 1]);
+                        listView.SelectedIndex = _resultList.Count - 1;
+                        e.Handled = true;
+                    }
                     break;
 
                 case Key.Enter:
                     if (CurrentItemActivated())
                         e.Handled = true;
                     break;
+            }
+        }
+
+        private void ScrollListViewPage(ScrollDir dir)
+        {
+            if (_resultList.Count == 0)
+                return;
+
+            VirtualizingStackPanel vsp = Utils.FindVisualChild<VirtualizingStackPanel>(listView);
+            if (vsp != null)
+            {
+                int firstVisibleItem = (int)vsp.VerticalOffset;
+                int visibleItemCount = (int)vsp.ViewportHeight;
+                int selectedItem = listView.SelectedIndex;
+                int firstItem = (selectedItem >= 0) ? selectedItem : firstVisibleItem;
+
+                int scrollItem;
+                if (dir == ScrollDir.Down)
+                    scrollItem = System.Math.Min(firstItem + visibleItemCount - 1, _resultList.Count - 1);
+                else
+                    scrollItem = System.Math.Max(firstItem - visibleItemCount - 1, 0);
+
+                listView.ScrollIntoView(_resultList[scrollItem]);
+                listView.SelectedIndex = scrollItem;
             }
         }
 
