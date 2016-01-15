@@ -198,8 +198,13 @@ namespace QtCreatorPack
                     break;
 
                 case Locator.SearchResultEventArgs.ResultType.Finished:
+                    ResetProgressBar();
+                    _locatorState = LocatorState.Ready;
+                    break;
+
                 case Locator.SearchResultEventArgs.ResultType.Error:
                     ResetProgressBar();
+                    ResetResultList();
                     _locatorState = LocatorState.Ready;
                     break;
             }
