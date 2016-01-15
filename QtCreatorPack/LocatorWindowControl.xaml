@@ -23,7 +23,7 @@
         <Grid Style="{DynamicResource CommandBarGrid}" Height="26" VerticalAlignment="Top" MaxHeight="26" MinHeight="26" ScrollViewer.VerticalScrollBarVisibility="Disabled">
 
             <TextBox x:Name="textBox" TextWrapping="Wrap" VerticalAlignment="Top" TextChanged="textBox_TextChanged" TabIndex="0" FontSize="13.333"
-        		     PreviewKeyDown="textBox_PreviewKeyDown" HorizontalAlignment="Left" KeyDown="textBox_KeyDown" Margin="3,3,0,0" Height="20" Width="400"/>
+        		     PreviewKeyDown="textBox_PreviewKeyDown" HorizontalAlignment="Left" KeyDown="textBox_KeyDown" Margin="3,3,0,0" Height="20" Width="400" GotFocus="textBox_GotFocus"/>
 
             <Button x:Name="buttonClear" HorizontalAlignment="Left" Margin="410,3,0,0" VerticalAlignment="Top" Width="20" ToolTip="Clear search" Height="20" Click="buttonClear_Click" />
 

@@ -11,10 +11,7 @@ namespace QtCreatorPack
     using System.Windows.Input;
     using System.Windows.Data;
     using System.Collections.Generic;
-    using System.Collections.ObjectModel;
     using System.Collections.Specialized;
-    using System.Windows.Media;
-    using System;
 
     /// <summary>
     /// Interaction logic for LocatorWindowControl.
@@ -348,6 +345,11 @@ namespace QtCreatorPack
         {
             textBox.Clear();
             textBox.Focus();
+        }
+
+        private void textBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            textBox.SelectAll();
         }
     }
 }

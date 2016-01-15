@@ -10,9 +10,6 @@ using EnvDTE;
 using Microsoft.VisualStudio.VCCodeModel;
 using System.Windows.Media.Imaging;
 using System.Windows.Media;
-using System.IO;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Diagnostics;
 
 namespace QtCreatorPack
@@ -230,8 +227,9 @@ namespace QtCreatorPack
 
             public static Dispatcher Dispatcher;
             private static Dictionary<IntPtr, ImageSource> _projectIconCache = new Dictionary<IntPtr, ImageSource>();
+            public static volatile bool CancelProjectLoad = false;
 
-            private uint _cookie;
+            private uint _cookie = 0;
 
             public Project(IVsHierarchy hierarchy)
             {
@@ -249,7 +247,8 @@ namespace QtCreatorPack
 
             public void StopListeningEvents()
             {
-                Hierarchy.UnadviseHierarchyEvents(_cookie);
+                if (_cookie > 0)
+                    Hierarchy.UnadviseHierarchyEvents(_cookie);
             }
 
             #region IVsHierarchyEvents
@@ -328,7 +327,7 @@ namespace QtCreatorPack
 
             private void ProcessHierarchy(uint itemId, IVsHierarchy hierarchy)
             {
-                if (hierarchy == null)
+                if (hierarchy == null || CancelProjectLoad)
                     return;
 
                 object obj;
@@ -372,19 +371,33 @@ namespace QtCreatorPack
                 }
             }
 
+            // If not found in the cache, this function will load an image and put it in the cache.
+            // ImageSources must be created in the main thread (since they will be used by it), so
+            // we use the dispatcher to do this asynchronously. Meanwhile we must check the cancel
+            // flag periodically in case the main thread is waiting for this thread to finish, to
+            // prevent deadlock.
             private static ImageSource GetProjectItemImage(IVsHierarchy hierarchy, uint itemId)
             {
                 bool destroy;
                 IntPtr hIcon = Utils.GetProjectItemIcon(hierarchy, itemId, out destroy);
                 if (hIcon != IntPtr.Zero)
                 {
-                    ImageSource image;
+                    ImageSource image = null;
                     if (_projectIconCache.TryGetValue(hIcon, out image))
                         return image;
 
-                    image = Dispatcher.Invoke(new Func<ImageSource>(() => {
+                    var op = Dispatcher.InvokeAsync(new Func<ImageSource>(() => {
                         return Utils.CreateImageSource(hIcon, destroy);
                     }));
+
+                    while (op.Wait(TimeSpan.FromMilliseconds(50)) != DispatcherOperationStatus.Completed)
+                    {
+                        if (CancelProjectLoad)
+                            return null;
+                    }
+
+                    image = op.Result;
+
                     if (image != null)
                     {
                         _projectIconCache.Add(hIcon, image);
@@ -397,10 +410,18 @@ namespace QtCreatorPack
                 if (!_projectIconCache.TryGetValue(IntPtr.Zero, out defaultImage))
                 {
                     // Load and add default image to the cache.
-                    defaultImage = Dispatcher.Invoke(new Func<ImageSource>(() =>
+                    var op = Dispatcher.InvokeAsync(new Func<ImageSource>(() =>
                     {
                         return Utils.LoadImageFromResource(@"pack://application:,,,/QtCreatorPack;component/Resources/DefaultProjectItem.png");
                     }));
+
+                    while (op.Wait(TimeSpan.FromMilliseconds(50)) != DispatcherOperationStatus.Completed)
+                    {
+                        if (CancelProjectLoad)
+                            return null;
+                    }
+
+                    defaultImage = op.Result;
                     _projectIconCache.Add(IntPtr.Zero, defaultImage);
                 }
                 return defaultImage;
@@ -514,6 +535,7 @@ namespace QtCreatorPack
                 {
                     _messageQueue.Enqueue(Message.Stop());
                     _cancelSearch = true;
+                    Project.CancelProjectLoad = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
 
@@ -569,6 +591,24 @@ namespace QtCreatorPack
 
         public int OnBeforeCloseSolution(object pUnkReserved)
         {
+            // Cancel all pending search and project loading tasks.
+            lock (_workerThreadSync)
+            {
+                _cancelSearch = true;
+                Project.CancelProjectLoad = true;
+                _searchMessage = null;
+
+                // Remove project loading tasks from the message queue.
+                List<Message> msgList = new List<Message>();
+                foreach (Message msg in _messageQueue)
+                    if (msg.Type != MessageType.ProjectLoaded)
+                        msgList.Add(msg);
+
+                _messageQueue.Clear();
+                foreach (Message msg in msgList)
+                    _messageQueue.Enqueue(msg);
+            }
+
             RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.SolutionUnloading);
             return VSConstants.S_OK;
         }
@@ -668,6 +708,7 @@ namespace QtCreatorPack
                     if (_messageQueue.Count > 0)
                     {
                         message = _messageQueue.Dequeue();
+                        Project.CancelProjectLoad = false;
                     }
                     else // search message must be set
                     {
