@@ -45,7 +45,7 @@ namespace QtCreatorPack
 
         private Locator _locator;
         private GridView _gridView;
-        private ObservableList<Locator.Item> _resultList = new ObservableList<Locator.Item>();
+        private ObservableList<LocatorItem> _resultList = new ObservableList<LocatorItem>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LocatorWindowControl"/> class.
@@ -82,7 +82,7 @@ namespace QtCreatorPack
         {
             if (listView.SelectedItem != null)
             {
-                ((Locator.Item)listView.SelectedItem).ExecuteAction();
+                ((LocatorItem)listView.SelectedItem).ExecuteAction();
                 return true;
             }
             return false;
@@ -128,7 +128,7 @@ namespace QtCreatorPack
                     listView.Visibility = Visibility.Visible;
                     bool first = true;
 
-                    foreach (Locator.Item.HeaderData headerData in args.HeaderData)
+                    foreach (LocatorItem.HeaderData headerData in args.HeaderData)
                     {
                         GridViewColumn column = new GridViewColumn();
                         column.Header = headerData.Title;

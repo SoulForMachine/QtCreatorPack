@@ -9,114 +9,12 @@ using Microsoft.VisualStudio.Shell;
 using EnvDTE;
 using Microsoft.VisualStudio.VCCodeModel;
 using System.Windows.Media.Imaging;
-using System.Windows.Media;
 using System.Diagnostics;
 
 namespace QtCreatorPack
 {
     internal class Locator : IVsSolutionEvents3
     {
-        public abstract class Item
-        {
-            public class HeaderData
-            {
-                public HeaderData(string title, string boundPropertyName, int width)
-                {
-                    Title = title;
-                    BoundPropertyName = boundPropertyName;
-                    Width = width;
-                }
-                public string Title;
-                public string BoundPropertyName;
-                public int Width;
-            }
-
-            public abstract void ExecuteAction();
-        }
-
-        public class ProjectItem : Item
-        {
-            private static List<HeaderData> _headerData = new List<HeaderData> {
-                new HeaderData("Name", "Name", 600),
-                new HeaderData("Path", "Path", 800)
-            };
-
-            public static List<HeaderData> HeaderDataList
-            {
-                get { return _headerData; }
-            }
-
-            public override void ExecuteAction()
-            {
-                try
-                {
-                    Item.Open(EnvDTE.Constants.vsViewKindPrimary).Activate();
-                }
-                catch(Exception ex)
-                {
-                    Debug.Print(ex.Message);
-                }
-            }
-
-            public EnvDTE.ProjectItem Item { get; set; }
-            public string Name { get; set; }
-            public string Path { get; set; }    // Project relative path.
-            public ImageSource Image { get; set; }
-        }
-
-        public class CodeItem : Item
-        {
-            private static List<HeaderData> _headerData = new List<HeaderData> {
-                new HeaderData("Code element", "Name", 600),
-                new HeaderData("Fully qualified name", "FQName", 400),
-                new HeaderData("Comment", "Comment", 800)
-            };
-
-            public static List<HeaderData> HeaderDataList
-            {
-                get { return _headerData; }
-            }
-
-            public override void ExecuteAction()
-            {
-                try
-                {
-                    if (ProjectItem != null)
-                    {
-                        EnvDTE.Window window = ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
-                        if (window != null)
-                        {
-                            window.Activate();
-                            EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
-                            sel.MoveToAbsoluteOffset(ElementOffset, false);
-                        }
-                    }
-                    else
-                    {
-                        EnvDTE.Window window = CodeElement.ProjectItem.Open(EnvDTE.Constants.vsViewKindPrimary);
-                        if (window != null)
-                        {
-                            window.Activate();
-                            EnvDTE.TextSelection sel = (EnvDTE.TextSelection)window.Document.Selection;
-                            sel.MoveToPoint(CodeElement.StartPoint, false);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.Print(ex.Message);
-                }
-            }
-
-            public EnvDTE.CodeElement CodeElement { get; set; }
-            public EnvDTE.ProjectItem ProjectItem { get; set; }
-            public int ElementOffset { get; set; }
-            public string Name { get; set; }
-            public string FQName { get; set; }
-            public string Comment { get; set; }
-            public ImageSource Image { get; set; }
-        }
-
         public class SearchResultEventArgs
         {
             public enum ResultType
@@ -129,7 +27,7 @@ namespace QtCreatorPack
                 Finished
             }
 
-            public SearchResultEventArgs(ResultType type, int percent, IEnumerable<Item> items, IEnumerable<Item.HeaderData> headerData)
+            public SearchResultEventArgs(ResultType type, int percent, IEnumerable<LocatorItem> items, IEnumerable<LocatorItem.HeaderData> headerData)
             {
                 Type = type;
                 Items = items;
@@ -138,8 +36,8 @@ namespace QtCreatorPack
             }
 
             public ResultType Type;
-            public IEnumerable<Item> Items { get; private set; }
-            public IEnumerable<Item.HeaderData> HeaderData { get; private set; }
+            public IEnumerable<LocatorItem> Items { get; private set; }
+            public IEnumerable<LocatorItem.HeaderData> HeaderData { get; private set; }
             public int Percent { get; private set; }
         }
 
@@ -219,215 +117,6 @@ namespace QtCreatorPack
             private Message() { }
         }
 
-        private class Project : IVsHierarchyEvents
-        {
-            public IVsHierarchy Hierarchy { get; private set; }
-            public string Name { get; private set; }
-            public List<ProjectItem> Items { get; private set; }
-
-            public static Dispatcher Dispatcher;
-            private static Dictionary<IntPtr, ImageSource> _projectIconCache = new Dictionary<IntPtr, ImageSource>();
-            public static volatile bool CancelProjectLoad = false;
-
-            private uint _cookie = 0;
-
-            public Project(IVsHierarchy hierarchy)
-            {
-                Hierarchy = hierarchy;
-                object obj;
-                int result = hierarchy.GetProperty(VSConstants.VSITEMID_ROOT, (int)__VSHPROPID.VSHPROPID_Name, out obj);
-                if (result == VSConstants.S_OK)
-                    Name = obj as string;
-                else
-                    Name = string.Empty;
-                Items = new List<ProjectItem>();
-                ProcessHierarchy(VSConstants.VSITEMID_ROOT, hierarchy);
-                Hierarchy.AdviseHierarchyEvents(this, out _cookie);
-            }
-
-            public void StopListeningEvents()
-            {
-                if (_cookie > 0)
-                    Hierarchy.UnadviseHierarchyEvents(_cookie);
-            }
-
-            #region IVsHierarchyEvents
-
-            public int OnItemAdded(uint itemidParent, uint itemidSiblingPrev, uint itemidAdded)
-            {
-                object addedItemObject;
-                if (Hierarchy.GetProperty(itemidAdded, (int)__VSHPROPID.VSHPROPID_ExtObject, out addedItemObject) == VSConstants.S_OK)
-                {
-                    EnvDTE.ProjectItem projectItem = addedItemObject as EnvDTE.ProjectItem;
-                    if (projectItem != null)
-                    {
-                        if (projectItem.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile)
-                        {
-                            ProjectItem item = new ProjectItem();
-                            item.Name = projectItem.Name;
-                            item.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
-                            item.Item = projectItem;
-                            item.Image = GetProjectItemImage(Hierarchy, itemidAdded);
-                            lock (Items)
-                            {
-                                Items.Add(item);
-                            }
-                        }
-                    }
-                }
-
-                return VSConstants.S_OK;
-            }
-
-            public int OnItemsAppended(uint itemidParent)
-            {
-                return VSConstants.S_OK;
-            }
-
-            public int OnItemDeleted(uint itemid)
-            {
-                object deletedItemObject;
-                if (Hierarchy.GetProperty(itemid, (int)__VSHPROPID.VSHPROPID_ExtObject, out deletedItemObject) == VSConstants.S_OK)
-                {
-                    EnvDTE.ProjectItem projectItem = deletedItemObject as EnvDTE.ProjectItem;
-                    if (projectItem != null)
-                    {
-                        if (projectItem.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile)
-                        {
-                            lock (Items)
-                            {
-                                Items.RemoveAll((ProjectItem listItem) =>
-                                {
-                                    return projectItem == listItem.Item;
-                                });
-                            }
-                        }
-                    }
-                }
-
-                return VSConstants.S_OK;
-            }
-
-            public int OnPropertyChanged(uint itemid, int propid, uint flags)
-            {
-                return VSConstants.S_OK;
-            }
-
-            public int OnInvalidateItems(uint itemidParent)
-            {
-                return VSConstants.S_OK;
-            }
-
-            public int OnInvalidateIcon(IntPtr hicon)
-            {
-                return VSConstants.S_OK;
-            }
-
-            #endregion
-
-            private void ProcessHierarchy(uint itemId, IVsHierarchy hierarchy)
-            {
-                if (hierarchy == null || CancelProjectLoad)
-                    return;
-
-                object obj;
-                int result = hierarchy.GetProperty(itemId, (int)__VSHPROPID.VSHPROPID_ExtObject, out obj);
-                if (result == VSConstants.S_OK)
-                {
-                    EnvDTE.ProjectItem projectItem = obj as EnvDTE.ProjectItem;
-                    if (projectItem != null)
-                    {
-                        if (projectItem.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile)
-                        {
-                            ProjectItem item = new ProjectItem();
-                            item.Name = projectItem.Name;
-                            item.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
-                            item.Item = projectItem;
-                            item.Image = GetProjectItemImage(hierarchy, itemId);
-                            Items.Add(item);
-                        }
-                    }
-                }
-
-                // Recursively process children, depth first.
-                result = hierarchy.GetProperty(itemId, (int)__VSHPROPID.VSHPROPID_FirstVisibleChild, out obj);
-                if (result == VSConstants.S_OK)
-                {
-                    uint childId = (uint)(Int32)obj;
-                    while (childId != VSConstants.VSITEMID_NIL)
-                    {
-                        ProcessHierarchy(childId, hierarchy);
-
-                        result = hierarchy.GetProperty(childId, (int)__VSHPROPID.VSHPROPID_NextVisibleSibling, out obj);
-                        if (result == VSConstants.S_OK)
-                        {
-                            childId = (uint)(Int32)obj;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // If not found in the cache, this function will load an image and put it in the cache.
-            // ImageSources must be created in the main thread (since they will be used by it), so
-            // we use the dispatcher to do this asynchronously. Meanwhile we must check the cancel
-            // flag periodically in case the main thread is waiting for this thread to finish, to
-            // prevent deadlock.
-            private static ImageSource GetProjectItemImage(IVsHierarchy hierarchy, uint itemId)
-            {
-                bool destroy;
-                IntPtr hIcon = Utils.GetProjectItemIcon(hierarchy, itemId, out destroy);
-                if (hIcon != IntPtr.Zero)
-                {
-                    ImageSource image = null;
-                    if (_projectIconCache.TryGetValue(hIcon, out image))
-                        return image;
-
-                    var op = Dispatcher.InvokeAsync(new Func<ImageSource>(() => {
-                        return Utils.CreateImageSource(hIcon, destroy);
-                    }));
-
-                    while (op.Wait(TimeSpan.FromMilliseconds(50)) != DispatcherOperationStatus.Completed)
-                    {
-                        if (CancelProjectLoad)
-                            return null;
-                    }
-
-                    image = op.Result;
-
-                    if (image != null)
-                    {
-                        _projectIconCache.Add(hIcon, image);
-                        return image;
-                    }
-                }
-
-                // Get the default image.
-                ImageSource defaultImage = null;
-                if (!_projectIconCache.TryGetValue(IntPtr.Zero, out defaultImage))
-                {
-                    // Load and add default image to the cache.
-                    var op = Dispatcher.InvokeAsync(new Func<ImageSource>(() =>
-                    {
-                        return Utils.LoadImageFromResource(@"pack://application:,,,/QtCreatorPack;component/Resources/DefaultProjectItem.png");
-                    }));
-
-                    while (op.Wait(TimeSpan.FromMilliseconds(50)) != DispatcherOperationStatus.Completed)
-                    {
-                        if (CancelProjectLoad)
-                            return null;
-                    }
-
-                    defaultImage = op.Result;
-                    _projectIconCache.Add(IntPtr.Zero, defaultImage);
-                }
-                return defaultImage;
-            }
-        }
-
         private enum WorkerThreadState
         {
             NotStarted,
@@ -446,7 +135,7 @@ namespace QtCreatorPack
 
         private volatile bool _cancelSearch = false;
         private volatile WorkerThreadState _workerState = WorkerThreadState.NotStarted;
-        private List<Project> _projectList = new List<Project>();
+        private List<LocatorProject> _projectList = new List<LocatorProject>();
         private System.Threading.Thread _workerThread;
         private readonly object _workerThreadSync = new object();
         private readonly object _workerThreadIdle = new object();
@@ -456,7 +145,7 @@ namespace QtCreatorPack
         private EnvDTE.DTE _dte;
         private string _currentSourceFilePath;
         private string _currentSearchString;
-        private System.Diagnostics.Stopwatch _resultFlushStopwatch;
+        private Stopwatch _resultFlushStopwatch;
         private List<BitmapSource> _codeIconList = new List<BitmapSource>();
 
         public Locator()
@@ -482,7 +171,7 @@ namespace QtCreatorPack
                 _codeIconList.Add(bmp);
             }
 
-            Project.Dispatcher = _dispatcher;
+            LocatorProject.Dispatcher = _dispatcher;
         }
 
         public void SearchString(string text)
@@ -535,7 +224,7 @@ namespace QtCreatorPack
                 {
                     _messageQueue.Enqueue(Message.Stop());
                     _cancelSearch = true;
-                    Project.CancelProjectLoad = true;
+                    LocatorProject.CancelProjectLoad = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
 
@@ -595,7 +284,7 @@ namespace QtCreatorPack
             lock (_workerThreadSync)
             {
                 _cancelSearch = true;
-                Project.CancelProjectLoad = true;
+                LocatorProject.CancelProjectLoad = true;
                 _searchMessage = null;
 
                 // Remove project loading tasks from the message queue.
@@ -648,7 +337,7 @@ namespace QtCreatorPack
 
         protected virtual void RaiseSearchResultEvent(
             SearchResultEventArgs.ResultType type, int percent,
-            IEnumerable<Item> items = null, IEnumerable<Item.HeaderData> headerData = null)
+            IEnumerable<LocatorItem> items = null, IEnumerable<LocatorItem.HeaderData> headerData = null)
         {
             if (SearchResultEvent != null)
                 SearchResultEvent(this, new SearchResultEventArgs(type, percent, items, headerData));
@@ -708,7 +397,7 @@ namespace QtCreatorPack
                     if (_messageQueue.Count > 0)
                     {
                         message = _messageQueue.Dequeue();
-                        Project.CancelProjectLoad = false;
+                        LocatorProject.CancelProjectLoad = false;
                     }
                     else // search message must be set
                     {
@@ -747,7 +436,7 @@ namespace QtCreatorPack
                         name = string.Empty;
 
                     RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.ProjectLoading, "Loading project " + name);
-                    Project project = new Project(message.Hierarchy);
+                    LocatorProject project = new LocatorProject(message.Hierarchy);
                     _projectList.Add(project);
                     RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.ProjectFinishedLoading);
                 }
@@ -762,7 +451,7 @@ namespace QtCreatorPack
                         name = string.Empty;
 
                     RaiseSolutionEventInUserThread(SolutionEventArgs.EventType.ProjectUnloading, "Unloading project " + name);
-                    _projectList.RemoveAll((Project prj) => {
+                    _projectList.RemoveAll((LocatorProject prj) => {
                         if (prj.Hierarchy == message.Hierarchy)
                         {
                             prj.StopListeningEvents();
@@ -788,26 +477,26 @@ namespace QtCreatorPack
         {
             if (_projectList.Count > 0)
             {
-                RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, 0, null, ProjectItem.HeaderDataList);
+                RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, 0, null, LocatorProjectItem.HeaderDataList);
 
                 searchStr = searchStr.ToUpper();
-                List<ProjectItem> results = new List<ProjectItem>();
+                List<LocatorProjectItem> results = new List<LocatorProjectItem>();
                 int count = 0;
                 int totalItemCount = 0;
                 int prevPercent = -1;
                 _resultFlushStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-                foreach (Project prj in _projectList)
+                foreach (LocatorProject prj in _projectList)
                     totalItemCount += prj.Items.Count;
 
-                foreach (Project prj in _projectList)
+                foreach (LocatorProject prj in _projectList)
                 {
                     if (_cancelSearch)
                         break;
 
                     lock (prj.Items)
                     {
-                        foreach (ProjectItem item in prj.Items)
+                        foreach (LocatorProjectItem item in prj.Items)
                         {
                             if (_cancelSearch)
                                 break;
@@ -827,7 +516,7 @@ namespace QtCreatorPack
                             if (_resultFlushStopwatch.ElapsedMilliseconds > RESULT_FLUSH_TIMEOUT)
                             {
                                 // Taking too long, flush what we got alredy.
-                                List<ProjectItem> toSend = new List<ProjectItem>(results);
+                                List<LocatorProjectItem> toSend = new List<LocatorProjectItem>(results);
                                 RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, percent, toSend);
                                 results.Clear();
                                 _resultFlushStopwatch.Restart();
@@ -859,13 +548,13 @@ namespace QtCreatorPack
             if (_dte != null)
             {
                 // Search for functions in currently open code editor.
-                List<CodeItem> results = new List<CodeItem>();
+                List<LocatorCodeItem> results = new List<LocatorCodeItem>();
 
                 if (_dte.ActiveDocument != null &&
                     _dte.ActiveDocument.ProjectItem.FileCodeModel != null)
                 {
                     _resultFlushStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, -1, null, CodeItem.HeaderDataList);
+                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, -1, null, LocatorCodeItem.HeaderDataList);
                     RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Progress, -1);
 
                     try
@@ -902,7 +591,7 @@ namespace QtCreatorPack
             }
         }
 
-        private void GetCodeElements(List<CodeItem> results, CodeElements codeElements)
+        private void GetCodeElements(List<LocatorCodeItem> results, CodeElements codeElements)
         {
             if (codeElements == null)
                 return;
@@ -932,7 +621,7 @@ namespace QtCreatorPack
                             {
                                 if (emptySearchStr || str.Name.ToUpper().Contains(_currentSearchString))
                                 {
-                                    CodeItem item = new CodeItem();
+                                    LocatorCodeItem item = new LocatorCodeItem();
                                     item.CodeElement = ce;
                                     item.Name = str.Name;
                                     item.FQName = str.FullName;
@@ -963,7 +652,7 @@ namespace QtCreatorPack
                             {
                                 if (emptySearchStr || cls.Name.ToUpper().Contains(_currentSearchString))
                                 {
-                                    CodeItem item = new CodeItem();
+                                    LocatorCodeItem item = new LocatorCodeItem();
                                     item.CodeElement = ce;
                                     item.Name = cls.Name;
                                     item.FQName = cls.FullName;
@@ -988,7 +677,7 @@ namespace QtCreatorPack
                     {
                         if (emptySearchStr || f.Name.ToUpper().Contains(_currentSearchString))
                         {
-                            CodeItem item = new CodeItem();
+                            LocatorCodeItem item = new LocatorCodeItem();
                             item.CodeElement = ce;
                             item.Name = f.get_Prototype((int)vsCMPrototype.vsCMPrototypeParamTypes);
                             item.FQName = f.FullName;
@@ -1011,7 +700,7 @@ namespace QtCreatorPack
                             // Skip forward declarations
                             if (vcEnm == null || vcEnm.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
                             {
-                                CodeItem item = new CodeItem();
+                                LocatorCodeItem item = new LocatorCodeItem();
                                 item.CodeElement = ce;
                                 item.Name = enm.Name;
                                 item.FQName = enm.FullName;
@@ -1032,7 +721,7 @@ namespace QtCreatorPack
                             // Skip forward declarations
                             if (vcUn.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
                             {
-                                CodeItem item = new CodeItem();
+                                LocatorCodeItem item = new LocatorCodeItem();
                                 item.CodeElement = ce;
                                 item.Name = vcUn.Name;
                                 item.FQName = vcUn.FullName;
@@ -1050,7 +739,7 @@ namespace QtCreatorPack
                     {
                         if (emptySearchStr || intf.Name.ToUpper().Contains(_currentSearchString))
                         {
-                            CodeItem item = new CodeItem();
+                            LocatorCodeItem item = new LocatorCodeItem();
                             item.CodeElement = ce;
                             item.Name = intf.Name;
                             item.FQName = intf.FullName;
@@ -1066,7 +755,7 @@ namespace QtCreatorPack
                 if (_resultFlushStopwatch.ElapsedMilliseconds > RESULT_FLUSH_TIMEOUT)
                 {
                     // Taking too long, flush what we got alredy.
-                    List<CodeItem> toSend = new List<CodeItem>(results);
+                    List<LocatorCodeItem> toSend = new List<LocatorCodeItem>(results);
                     RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, -1, toSend);
                     results.Clear();
                     _resultFlushStopwatch.Restart();
@@ -1074,7 +763,7 @@ namespace QtCreatorPack
             }
         }
 
-        private void GetCppInfo(CodeElement ce, CodeItem item)
+        private void GetCppInfo(CodeElement ce, LocatorCodeItem item)
         {
             item.ProjectItem = null;
             item.ElementOffset = 1;
@@ -1113,7 +802,7 @@ namespace QtCreatorPack
 
         private void RaiseSearchResultEventInUserThread(
             SearchResultEventArgs.ResultType type, int percent,
-            IEnumerable<Item> items = null, IEnumerable<Item.HeaderData> headerData = null)
+            IEnumerable<LocatorItem> items = null, IEnumerable<LocatorItem.HeaderData> headerData = null)
         {
             _dispatcher.BeginInvoke(new Action(() => { RaiseSearchResultEvent(type, percent, items, headerData); }));
         }
