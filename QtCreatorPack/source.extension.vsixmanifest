@@ -4,6 +4,7 @@
     <Identity Id="QtCreatorPack.Milan Davidovic.89034b2b-2f58-4480-af55-fe88a010cc76" Version="0.1" Language="en-US" Publisher="Milan Davidovic" />
     <DisplayName>QtCreatorPack</DisplayName>
     <Description xml:space="preserve">Usefull tools found in Qt Creator IDE.</Description>
+    <License>LICENSE.txt</License>
     <Tags>C++, search, navigation</Tags>
   </Metadata>
   <Installation>

@@ -89,6 +89,10 @@
     <Resource Include="Resources\Interface.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
+    <Content Include="LICENSE.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\LocatorWindowCommand.png" />
     <Content Include="Resources\LocatorWindowPackage.ico" />
     <Resource Include="Resources\Method.png">
