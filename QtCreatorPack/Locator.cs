@@ -725,12 +725,15 @@ namespace QtCreatorPack
                     Match match = regex.Match(searchStr);
                     if (match.Success)
                     {
-                        searchStr = match.Groups[1].Value.ToUpper();
+                        searchStr = match.Groups[1].Value.ToUpper().TrimStart();
                         SearchCodeElements(searchStr);
                     }
                     else
                     {
-                        SearchFilesInSolution(searchStr);
+                        if (searchStr.Length > 0)
+                            SearchFilesInSolution(searchStr);
+                        else
+                            RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Error, 0);
                     }
                 }
                 else if (message.Type == MessageType.ProjectLoaded)

@@ -18,13 +18,6 @@ namespace QtCreatorPack
     /// </summary>
     public partial class LocatorWindowControl : UserControl
     {
-        private enum LocatorState
-        {
-            Uninitialized,
-            Ready,
-            Searching
-        }
-
         private enum ScrollDir
         {
             Down,
@@ -51,7 +44,6 @@ namespace QtCreatorPack
         }
 
         private Locator _locator;
-        private LocatorState _locatorState;
         private GridView _gridView;
         private ObservableList<Locator.Item> _resultList = new ObservableList<Locator.Item>();
 
@@ -62,7 +54,6 @@ namespace QtCreatorPack
         {
             this.InitializeComponent();
             progressBar.Visibility = Visibility.Hidden;
-            _locatorState = LocatorState.Uninitialized;
             _gridView = listView.View as GridView;
             listView.Visibility = Visibility.Hidden;
             listView.ItemsSource = _resultList;
@@ -74,23 +65,17 @@ namespace QtCreatorPack
             {
                 _locator.SearchResultEvent -= _locator_SearchResultEvent;
                 _locator.SolutionEvent -= _locator_SolutionEvent;
-                if (_locatorState == LocatorState.Searching)
-                {
-                    _locator.CancelSearch(true);
-                    ResetResultList();
-                    ResetProgressBar();
-                }
+                _locator.CancelSearch(true);
+                ResetResultList();
+                ResetProgressBar();
             }
 
             _locator = locator;
             if (_locator != null)
             {
-                _locatorState = LocatorState.Ready;
                 _locator.SearchResultEvent += _locator_SearchResultEvent;
                 _locator.SolutionEvent += _locator_SolutionEvent;
             }
-            else
-                _locatorState = LocatorState.Uninitialized;
         }
 
         private bool CurrentItemActivated()
@@ -105,20 +90,7 @@ namespace QtCreatorPack
 
         private void StartNewSearch()
         {
-            if (_locator != null)
-            {
-                if (textBox.Text.Length > 0)
-                {
-                    _locatorState = LocatorState.Searching;
-                    _locator.SearchString(textBox.Text);
-                }
-                else
-                {
-                    ResetResultList();
-                    ResetProgressBar();
-                    _locator.CancelSearch();
-                }
-            }
+            _locator.SearchString(textBox.Text);
         }
 
         private void ResetResultList()
@@ -191,18 +163,15 @@ namespace QtCreatorPack
 
                 case Locator.SearchResultEventArgs.ResultType.Canceled:
                     ResetResultList();
-                    _locatorState = LocatorState.Ready;
                     break;
 
                 case Locator.SearchResultEventArgs.ResultType.Finished:
                     ResetProgressBar();
-                    _locatorState = LocatorState.Ready;
                     break;
 
                 case Locator.SearchResultEventArgs.ResultType.Error:
                     ResetProgressBar();
                     ResetResultList();
-                    _locatorState = LocatorState.Ready;
                     break;
             }
         }
