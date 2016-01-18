@@ -143,7 +143,6 @@ namespace QtCreatorPack
         private Queue<Message> _messageQueue = new Queue<Message>();
         private Dispatcher _dispatcher;         // Dispatcher for the thread that created the Locator.
         private EnvDTE.DTE _dte;
-        private string _currentSourceFilePath;
         private string _currentSearchString;
         private Stopwatch _resultFlushStopwatch;
         private List<BitmapSource> _codeIconList = new List<BitmapSource>();
@@ -559,9 +558,8 @@ namespace QtCreatorPack
 
                     try
                     {
-                        _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
                         _currentSearchString = searchStr;
-                        GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
+                        GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements, _dte.ActiveDocument.ProjectItem);
                     }
                     catch(Exception ex)
                     {
@@ -591,7 +589,7 @@ namespace QtCreatorPack
             }
         }
 
-        private void GetCodeElements(List<LocatorCodeItem> results, CodeElements codeElements)
+        private void GetCodeElements(List<LocatorCodeItem> results, CodeElements codeElements, ProjectItem projectItem)
         {
             if (codeElements == null)
                 return;
@@ -606,7 +604,7 @@ namespace QtCreatorPack
                 if (ce.Kind == vsCMElement.vsCMElementNamespace)
                 {
                     CodeNamespace nsp = ce as CodeNamespace;
-                    GetCodeElements(results, nsp.Children);
+                    GetCodeElements(results, nsp.Children, projectItem);
                 }
                 else if (ce.Kind == vsCMElement.vsCMElementStruct)
                 {
@@ -617,7 +615,7 @@ namespace QtCreatorPack
                         if (vcStr != null)
                         {
                             // Skip forward declarations
-                            if (vcStr.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                            if (vcStr.ProjectItem == projectItem)
                             {
                                 if (emptySearchStr || str.Name.ToUpper().Contains(_currentSearchString))
                                 {
@@ -630,12 +628,12 @@ namespace QtCreatorPack
                                     results.Add(item);
                                 }
 
-                                GetCodeElements(results, vcStr.Children);
+                                GetCodeElements(results, vcStr.Children, projectItem);
                             }
                         }
                         else
                         {
-                            GetCodeElements(results, str.Children);
+                            GetCodeElements(results, str.Children, projectItem);
                         }
                     }
                 }
@@ -648,7 +646,7 @@ namespace QtCreatorPack
                         if (vcCls != null)
                         {
                             // Skip forward declarations
-                            if (vcCls.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                            if (vcCls.ProjectItem == projectItem)
                             {
                                 if (emptySearchStr || cls.Name.ToUpper().Contains(_currentSearchString))
                                 {
@@ -661,12 +659,12 @@ namespace QtCreatorPack
                                     results.Add(item);
                                 }
 
-                                GetCodeElements(results, vcCls.Children);
+                                GetCodeElements(results, vcCls.Children, projectItem);
                             }
                         }
                         else
                         {
-                            GetCodeElements(results, cls.Children);
+                            GetCodeElements(results, cls.Children, projectItem);
                         }
                     }
                 }
@@ -683,7 +681,7 @@ namespace QtCreatorPack
                             item.FQName = f.FullName;
                             item.Comment = f.Comment;
                             item.Image = _codeIconList[CodeIcon_Function];
-                            GetCppInfo(ce, item);
+                            GetCppInfo(ce, item, projectItem);
                             results.Add(item);
                         }
                     }
@@ -698,7 +696,7 @@ namespace QtCreatorPack
                             VCCodeEnum vcEnm = enm as VCCodeEnum;
 
                             // Skip forward declarations
-                            if (vcEnm == null || vcEnm.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                            if (vcEnm == null || vcEnm.ProjectItem == projectItem)
                             {
                                 LocatorCodeItem item = new LocatorCodeItem();
                                 item.CodeElement = ce;
@@ -719,7 +717,7 @@ namespace QtCreatorPack
                         if (emptySearchStr || vcUn.Name.ToUpper().Contains(_currentSearchString))
                         {
                             // Skip forward declarations
-                            if (vcUn.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                            if (vcUn.ProjectItem == projectItem)
                             {
                                 LocatorCodeItem item = new LocatorCodeItem();
                                 item.CodeElement = ce;
@@ -748,7 +746,7 @@ namespace QtCreatorPack
                             results.Add(item);
                         }
 
-                        GetCodeElements(results, intf.Children);
+                        GetCodeElements(results, intf.Children, projectItem);
                     }
                 }
 
@@ -763,7 +761,7 @@ namespace QtCreatorPack
             }
         }
 
-        private void GetCppInfo(CodeElement ce, LocatorCodeItem item)
+        private void GetCppInfo(CodeElement ce, LocatorCodeItem item, ProjectItem projectItem)
         {
             item.ProjectItem = null;
             item.ElementOffset = 1;
@@ -774,7 +772,7 @@ namespace QtCreatorPack
                 try
                 {
                     TextPoint def = vcEl.StartPointOf[vsCMPart.vsCMPartName, vsCMWhere.vsCMWhereDefinition];
-                    if (def.Parent.Parent.FullName.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                    if (def.Parent.Parent.ProjectItem == projectItem)
                     {
                         item.ProjectItem = def.Parent.Parent.ProjectItem;
                         item.ElementOffset = def.AbsoluteCharOffset;
@@ -788,7 +786,7 @@ namespace QtCreatorPack
                     try
                     {
                         TextPoint decl = vcEl.StartPointOf[vsCMPart.vsCMPartName, vsCMWhere.vsCMWhereDeclaration];
-                        if (decl.Parent.Parent.FullName.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
+                        if (decl.Parent.Parent.ProjectItem == projectItem)
                         {
                             item.ProjectItem = decl.Parent.Parent.ProjectItem;
                             item.ElementOffset = decl.AbsoluteCharOffset;
