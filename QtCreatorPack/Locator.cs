@@ -6,13 +6,15 @@ using System.Threading;
 using System.Windows.Threading;
 using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.Shell;
-using EnvDTE;
-using Microsoft.VisualStudio.VCCodeModel;
-using System.Windows.Media.Imaging;
 using System.Diagnostics;
 
 namespace QtCreatorPack
 {
+    internal class Cancelation
+    {
+        public volatile bool Cancel = false;
+    }
+
     internal class Locator : IVsSolutionEvents3
     {
         public class SearchResultEventArgs
@@ -124,16 +126,9 @@ namespace QtCreatorPack
             Working
         }
 
-        private const int CodeIcon_Struct = 0;
-        private const int CodeIcon_Class = 1;
-        private const int CodeIcon_Union = 2;
-        private const int CodeIcon_Interface = 3;
-        private const int CodeIcon_Enum = 4;
-        private const int CodeIcon_Function = 5;
-
         private const int RESULT_FLUSH_TIMEOUT = 300;   // milliseconds
 
-        private volatile bool _cancelSearch = false;
+        private volatile Cancelation _cancelSearch = new Cancelation();
         private volatile WorkerThreadState _workerState = WorkerThreadState.NotStarted;
         private List<LocatorProject> _projectList = new List<LocatorProject>();
         private System.Threading.Thread _workerThread;
@@ -143,33 +138,16 @@ namespace QtCreatorPack
         private Queue<Message> _messageQueue = new Queue<Message>();
         private Dispatcher _dispatcher;         // Dispatcher for the thread that created the Locator.
         private EnvDTE.DTE _dte;
-        private string _currentSourceFilePath;
-        private string _currentSearchString;
         private Stopwatch _resultFlushStopwatch;
-        private List<BitmapSource> _codeIconList = new List<BitmapSource>();
+        private EnvDTE80.Events2 _events;
+        private EnvDTE80.CodeModelEvents _codeEvents;
+        private CodeFinder _codeFinder = new CodeFinder();
 
         public Locator()
         {
             _dte = Package.GetGlobalService(typeof(EnvDTE.DTE)) as EnvDTE.DTE;
             _dispatcher = Dispatcher.FromThread(System.Threading.Thread.CurrentThread);
             _workerThread = new System.Threading.Thread(WorkerThreadFunc);
-
-            // Load images from resource file.
-            string[] imagePaths = new string[]
-            {
-                @"Resources/Structure.png",
-                @"Resources/Class.png",
-                @"Resources/Union.png",
-                @"Resources/Interface.png",
-                @"Resources/Enum.png",
-                @"Resources/Method.png",
-            };
-
-            foreach (string path in imagePaths)
-            {
-                BitmapImage bmp = Utils.LoadImageFromResource("pack://application:,,,/QtCreatorPack;component/" + path);
-                _codeIconList.Add(bmp);
-            }
 
             LocatorProject.Dispatcher = _dispatcher;
         }
@@ -181,7 +159,7 @@ namespace QtCreatorPack
                 lock (_workerThreadSync)
                 {
                     _searchMessage = Message.SearchString(text);
-                    _cancelSearch = true;
+                    _cancelSearch.Cancel = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
             }
@@ -193,7 +171,7 @@ namespace QtCreatorPack
             {
                 lock (_workerThreadSync)
                 {
-                    _cancelSearch = true;
+                    _cancelSearch.Cancel = true;
 
                     if (wait)
                     {
@@ -207,23 +185,24 @@ namespace QtCreatorPack
             }
         }
 
-        public void StartWorkerThread()
+        public void Init()
         {
             if (!_workerThread.IsAlive)
             {
                 _workerState = WorkerThreadState.Idle;
                 _workerThread.Start();
             }
+            _codeFinder.Init(_dte);
         }
 
-        public void StopWorkerThread()
+        public void Deinit()
         {
             if (_workerThread.IsAlive)
             {
                 lock (_workerThreadSync)
                 {
                     _messageQueue.Enqueue(Message.Stop());
-                    _cancelSearch = true;
+                    _cancelSearch.Cancel = true;
                     LocatorProject.CancelProjectLoad = true;
                     Monitor.Pulse(_workerThreadSync);
                 }
@@ -231,6 +210,8 @@ namespace QtCreatorPack
                 _workerThread.Join();
                 _workerState = WorkerThreadState.NotStarted;
             }
+
+            _codeFinder.Deinit();
         }
 
         #region IVsSolutionEvents3
@@ -283,7 +264,7 @@ namespace QtCreatorPack
             // Cancel all pending search and project loading tasks.
             lock (_workerThreadSync)
             {
-                _cancelSearch = true;
+                _cancelSearch.Cancel = true;
                 LocatorProject.CancelProjectLoad = true;
                 _searchMessage = null;
 
@@ -403,7 +384,7 @@ namespace QtCreatorPack
                     {
                         message = _searchMessage;
                         _searchMessage = null;
-                        _cancelSearch = false;
+                        _cancelSearch.Cancel = false;
                     }
                 }
 
@@ -491,14 +472,14 @@ namespace QtCreatorPack
 
                 foreach (LocatorProject prj in _projectList)
                 {
-                    if (_cancelSearch)
+                    if (_cancelSearch.Cancel)
                         break;
 
                     lock (prj.Items)
                     {
                         foreach (LocatorProjectItem item in prj.Items)
                         {
-                            if (_cancelSearch)
+                            if (_cancelSearch.Cancel)
                                 break;
 
                             int percent = (int)Math.Round(++count / (float)totalItemCount * 100.0f);
@@ -525,7 +506,7 @@ namespace QtCreatorPack
                     }
                 }
 
-                if (_cancelSearch)
+                if (_cancelSearch.Cancel)
                 {
                     RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Canceled, 0);
                 }
@@ -557,18 +538,9 @@ namespace QtCreatorPack
                     RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.HeaderData, -1, null, LocatorCodeItem.HeaderDataList);
                     RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Progress, -1);
 
-                    try
-                    {
-                        _currentSourceFilePath = _dte.ActiveDocument.ProjectItem.FileNames[0];
-                        _currentSearchString = searchStr;
-                        GetCodeElements(results, _dte.ActiveDocument.ProjectItem.FileCodeModel.CodeElements);
-                    }
-                    catch(Exception ex)
-                    {
-                        Debug.Print(ex.Message);
-                    }
+                    _codeFinder.SearchString(searchStr, _dte.ActiveDocument.ProjectItem, SearchResultsCallback, SearchProgressCallback, _cancelSearch);
 
-                    if (_cancelSearch)
+                    if (_cancelSearch.Cancel)
                     {
                         RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Canceled, 0);
                     }
@@ -591,213 +563,14 @@ namespace QtCreatorPack
             }
         }
 
-        private void GetCodeElements(List<LocatorCodeItem> results, CodeElements codeElements)
+        private void SearchResultsCallback(IEnumerable<LocatorItem> items)
         {
-            if (codeElements == null)
-                return;
-
-            foreach (CodeElement ce in codeElements)
-            {
-                if (_cancelSearch)
-                    return;
-
-                bool emptySearchStr = _currentSearchString.Length == 0;
-
-                if (ce.Kind == vsCMElement.vsCMElementNamespace)
-                {
-                    CodeNamespace nsp = ce as CodeNamespace;
-                    GetCodeElements(results, nsp.Children);
-                }
-                else if (ce.Kind == vsCMElement.vsCMElementStruct)
-                {
-                    CodeStruct str = ce as CodeStruct;
-                    if (str != null)
-                    {
-                        VCCodeStruct vcStr = str as VCCodeStruct;
-                        if (vcStr != null)
-                        {
-                            // Skip forward declarations
-                            if (vcStr.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                if (emptySearchStr || str.Name.ToUpper().Contains(_currentSearchString))
-                                {
-                                    LocatorCodeItem item = new LocatorCodeItem();
-                                    item.CodeElement = ce;
-                                    item.Name = str.Name;
-                                    item.FQName = str.FullName;
-                                    item.Comment = str.Comment;
-                                    item.Image = _codeIconList[CodeIcon_Struct];
-                                    results.Add(item);
-                                }
-
-                                GetCodeElements(results, vcStr.Children);
-                            }
-                        }
-                        else
-                        {
-                            GetCodeElements(results, str.Children);
-                        }
-                    }
-                }
-                else if (ce.Kind == vsCMElement.vsCMElementClass)
-                {
-                    CodeClass cls = ce as CodeClass;
-                    if (cls != null)
-                    {
-                        VCCodeClass vcCls = cls as VCCodeClass;
-                        if (vcCls != null)
-                        {
-                            // Skip forward declarations
-                            if (vcCls.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                if (emptySearchStr || cls.Name.ToUpper().Contains(_currentSearchString))
-                                {
-                                    LocatorCodeItem item = new LocatorCodeItem();
-                                    item.CodeElement = ce;
-                                    item.Name = cls.Name;
-                                    item.FQName = cls.FullName;
-                                    item.Comment = cls.Comment;
-                                    item.Image = _codeIconList[CodeIcon_Class];
-                                    results.Add(item);
-                                }
-
-                                GetCodeElements(results, vcCls.Children);
-                            }
-                        }
-                        else
-                        {
-                            GetCodeElements(results, cls.Children);
-                        }
-                    }
-                }
-                else if (ce.Kind == vsCMElement.vsCMElementFunction)
-                {
-                    CodeFunction f = ce as CodeFunction;
-                    if (f != null)
-                    {
-                        if (emptySearchStr || f.Name.ToUpper().Contains(_currentSearchString))
-                        {
-                            LocatorCodeItem item = new LocatorCodeItem();
-                            item.CodeElement = ce;
-                            item.Name = f.get_Prototype((int)vsCMPrototype.vsCMPrototypeParamTypes);
-                            item.FQName = f.FullName;
-                            item.Comment = f.Comment;
-                            item.Image = _codeIconList[CodeIcon_Function];
-                            GetCppInfo(ce, item);
-                            results.Add(item);
-                        }
-                    }
-                }
-                else if (ce.Kind == vsCMElement.vsCMElementEnum)
-                {
-                    CodeEnum enm = ce as CodeEnum;
-                    if (enm != null)
-                    {
-                        if (emptySearchStr || enm.Name.ToUpper().Contains(_currentSearchString))
-                        {
-                            VCCodeEnum vcEnm = enm as VCCodeEnum;
-
-                            // Skip forward declarations
-                            if (vcEnm == null || vcEnm.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                LocatorCodeItem item = new LocatorCodeItem();
-                                item.CodeElement = ce;
-                                item.Name = enm.Name;
-                                item.FQName = enm.FullName;
-                                item.Comment = enm.Comment;
-                                item.Image = _codeIconList[CodeIcon_Enum];
-                                results.Add(item);
-                            }
-                        }
-                    }
-                }
-                else if (ce.Kind == vsCMElement.vsCMElementUnion)
-                {
-                    VCCodeUnion vcUn = ce as VCCodeUnion;
-                    if (vcUn != null)
-                    {
-                        if (emptySearchStr || vcUn.Name.ToUpper().Contains(_currentSearchString))
-                        {
-                            // Skip forward declarations
-                            if (vcUn.Location.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
-                            {
-                                LocatorCodeItem item = new LocatorCodeItem();
-                                item.CodeElement = ce;
-                                item.Name = vcUn.Name;
-                                item.FQName = vcUn.FullName;
-                                item.Comment = vcUn.Comment;
-                                item.Image = _codeIconList[CodeIcon_Union];
-                                results.Add(item);
-                            }
-                        }
-                    }
-                }
-                else if (ce.Kind == vsCMElement.vsCMElementInterface)
-                {
-                    CodeInterface intf = ce as CodeInterface;
-                    if (intf != null)
-                    {
-                        if (emptySearchStr || intf.Name.ToUpper().Contains(_currentSearchString))
-                        {
-                            LocatorCodeItem item = new LocatorCodeItem();
-                            item.CodeElement = ce;
-                            item.Name = intf.Name;
-                            item.FQName = intf.FullName;
-                            item.Comment = intf.Comment;
-                            item.Image = _codeIconList[CodeIcon_Interface];
-                            results.Add(item);
-                        }
-
-                        GetCodeElements(results, intf.Children);
-                    }
-                }
-
-                if (_resultFlushStopwatch.ElapsedMilliseconds > RESULT_FLUSH_TIMEOUT)
-                {
-                    // Taking too long, flush what we got alredy.
-                    List<LocatorCodeItem> toSend = new List<LocatorCodeItem>(results);
-                    RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, -1, toSend);
-                    results.Clear();
-                    _resultFlushStopwatch.Restart();
-                }
-            }
+            RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Data, 0, items);
         }
 
-        private void GetCppInfo(CodeElement ce, LocatorCodeItem item)
+        private void SearchProgressCallback(int percent)
         {
-            item.ProjectItem = null;
-            item.ElementOffset = 1;
-            VCCodeElement vcEl = ce as VCCodeElement;
-
-            if (vcEl != null)
-            {
-                try
-                {
-                    TextPoint def = vcEl.StartPointOf[vsCMPart.vsCMPartName, vsCMWhere.vsCMWhereDefinition];
-                    if (def.Parent.Parent.FullName.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        item.ProjectItem = def.Parent.Parent.ProjectItem;
-                        item.ElementOffset = def.AbsoluteCharOffset;
-                    }
-                }
-                catch
-                { }
-
-                if (item.ProjectItem == null)
-                {
-                    try
-                    {
-                        TextPoint decl = vcEl.StartPointOf[vsCMPart.vsCMPartName, vsCMWhere.vsCMWhereDeclaration];
-                        if (decl.Parent.Parent.FullName.Equals(_currentSourceFilePath, StringComparison.InvariantCultureIgnoreCase))
-                        {
-                            item.ProjectItem = decl.Parent.Parent.ProjectItem;
-                            item.ElementOffset = decl.AbsoluteCharOffset;
-                        }
-                    }
-                    catch
-                    { }
-                }
-            }
+            RaiseSearchResultEventInUserThread(SearchResultEventArgs.ResultType.Progress, percent);
         }
 
         private void RaiseSearchResultEventInUserThread(

@@ -73,7 +73,7 @@ namespace QtCreatorPack
             _solution = ServiceProvider.GetService(typeof(SVsSolution)) as IVsSolution;
             _solution.AdviseSolutionEvents(_locator, out _cookie);
             _locatorWindow.SetLocator(_locator);
-            _locator.StartWorkerThread();
+            _locator.Init();
         }
 
         /// <summary>
@@ -117,7 +117,7 @@ namespace QtCreatorPack
 
         private void StopLocatorThread()
         {
-            _locator.StopWorkerThread();
+            _locator.Deinit();
         }
 
         /// <summary>
