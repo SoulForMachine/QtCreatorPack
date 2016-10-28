@@ -48,6 +48,7 @@ namespace QtCreatorPack
         }
 
         public EnvDTE.ProjectItem Item { get; set; }
+        public uint ItemId { get; set; }
         public string Name { get; set; }
         public string Path { get; set; }    // Project relative path.
         public ImageSource Image { get; set; }

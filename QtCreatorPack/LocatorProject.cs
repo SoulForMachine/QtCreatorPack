@@ -55,6 +55,7 @@ namespace QtCreatorPack
                         item.Name = projectItem.Name;
                         item.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
                         item.Item = projectItem;
+                        item.ItemId = itemidAdded;
                         item.Image = GetProjectItemImage(Hierarchy, itemidAdded);
                         lock (Items)
                         {
@@ -86,7 +87,7 @@ namespace QtCreatorPack
                         {
                             Items.RemoveAll((LocatorProjectItem listItem) =>
                             {
-                                return projectItem == listItem.Item;
+                                return itemid == listItem.ItemId;
                             });
                         }
                     }
@@ -98,6 +99,37 @@ namespace QtCreatorPack
 
         public int OnPropertyChanged(uint itemid, int propid, uint flags)
         {
+            if (propid == (int)__VSHPROPID.VSHPROPID_EditLabel)
+            {
+                object itemObject;
+                if (Hierarchy.GetProperty(itemid, (int)__VSHPROPID.VSHPROPID_ExtObject, out itemObject) == VSConstants.S_OK)
+                {
+                    EnvDTE.ProjectItem projectItem = itemObject as EnvDTE.ProjectItem;
+                    if (projectItem != null)
+                    {
+                        if (projectItem.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile)
+                        {
+                            var foundItem = Items.Find((LocatorProjectItem item) =>
+                            {
+                                return itemid == item.ItemId;
+                            });
+
+                            if (foundItem != null)
+                            {
+                                object itemNameObject;
+                                if (Hierarchy.GetProperty(itemid, (int)__VSHPROPID.VSHPROPID_Name, out itemNameObject) == VSConstants.S_OK)
+                                {
+                                    string newName = itemNameObject as string;
+                                    foundItem.Name = newName;
+                                    foundItem.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
+                                    foundItem.Image = GetProjectItemImage(Hierarchy, itemid);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             return VSConstants.S_OK;
         }
 
@@ -131,6 +163,7 @@ namespace QtCreatorPack
                         item.Name = projectItem.Name;
                         item.Path = Utils.PathRelativeTo(projectItem.FileNames[0], projectItem.ContainingProject.FullName);
                         item.Item = projectItem;
+                        item.ItemId = itemId;
                         item.Image = GetProjectItemImage(hierarchy, itemId);
                         Items.Add(item);
                     }
